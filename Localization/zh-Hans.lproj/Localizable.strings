@@ -1,0 +1,54 @@
+/* Clipboard kinds */
+"Text" = "文本";
+"Link" = "链接";
+"Code" = "代码";
+"Email" = "邮箱";
+"File" = "文件";
+"Image" = "图片";
+
+/* Default pinboards */
+"Favorites" = "收藏";
+"Work" = "工作";
+"Pinboard %lld" = "收藏板 %lld";
+
+/* Menu bar */
+"Show ClipDeck" = "显示 ClipDeck";
+"Link Previews" = "链接预览";
+"Run in Background" = "后台运行";
+"Quit ClipDeck" = "退出 ClipDeck";
+"Check for Updates..." = "检查更新…";
+"Preferences..." = "偏好设置…";
+"Grant Accessibility Permission..." = "授予辅助功能权限…";
+
+/* Panel */
+"Nothing here yet" = "还没有内容";
+"Copy something and it will appear in this tray." = "复制点什么，它就会出现在这里。";
+"Clipboard history" = "剪贴板历史记录";
+"%lld characters" = "%lld 个字符";
+"Type" = "类型";
+"All" = "全部";
+"Clear History" = "清空历史";
+"Pin" = "固定";
+"Unpin" = "取消固定";
+"Move to Pinboard" = "移动到收藏板";
+"None" = "无";
+"Copy" = "复制";
+"Preview" = "预览";
+"Delete" = "删除";
+"Delete Pinboard" = "删除收藏板";
+"Image unavailable" = "图片不可用";
+
+/* Appearance */
+"Appearance" = "外观";
+"Follow System" = "跟随系统";
+"Light" = "浅色";
+"Dark" = "深色";
+"Choose how ClipDeck looks. Follow System matches your macOS setting." = "选择 ClipDeck 的外观。「跟随系统」将匹配你的 macOS 设置。";
+
+/* Settings */
+"ClipDeck Preferences" = "ClipDeck 偏好设置";
+"Keyboard Shortcut" = "键盘快捷键";
+"Recording…" = "录制中…";
+"Cancel" = "取消";
+"Reset to default" = "恢复默认";
+"Choose the global shortcut used to show or hide ClipDeck. Press a combination with at least one modifier key." = "选择用于显示或隐藏 ClipDeck 的全局快捷键。请按下至少包含一个修饰键的组合。";

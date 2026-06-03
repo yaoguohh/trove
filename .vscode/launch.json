@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:clipdeck}",
+            "name": "Debug ClipDeck",
+            "target": "ClipDeck",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug ClipDeck"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:clipdeck}",
+            "name": "Release ClipDeck",
+            "target": "ClipDeck",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release ClipDeck"
+        }
+    ]
+}

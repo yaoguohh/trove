@@ -1,0 +1,54 @@
+/* Clipboard kinds */
+"Text" = "Text";
+"Link" = "Link";
+"Code" = "Code";
+"Email" = "Email";
+"File" = "File";
+"Image" = "Image";
+
+/* Default pinboards */
+"Favorites" = "Favorites";
+"Work" = "Work";
+"Pinboard %lld" = "Pinboard %lld";
+
+/* Menu bar */
+"Show ClipDeck" = "Show ClipDeck";
+"Link Previews" = "Link Previews";
+"Run in Background" = "Run in Background";
+"Quit ClipDeck" = "Quit ClipDeck";
+"Check for Updates..." = "Check for Updates…";
+"Preferences..." = "Preferences...";
+"Grant Accessibility Permission..." = "Grant Accessibility Permission...";
+
+/* Panel */
+"Nothing here yet" = "Nothing here yet";
+"Copy something and it will appear in this tray." = "Copy something and it will appear in this tray.";
+"Clipboard history" = "Clipboard history";
+"%lld characters" = "%lld characters";
+"Type" = "Type";
+"All" = "All";
+"Clear History" = "Clear History";
+"Pin" = "Pin";
+"Unpin" = "Unpin";
+"Move to Pinboard" = "Move to Pinboard";
+"None" = "None";
+"Copy" = "Copy";
+"Preview" = "Preview";
+"Delete" = "Delete";
+"Delete Pinboard" = "Delete Pinboard";
+"Image unavailable" = "Image unavailable";
+
+/* Appearance */
+"Appearance" = "Appearance";
+"Follow System" = "Follow System";
+"Light" = "Light";
+"Dark" = "Dark";
+"Choose how ClipDeck looks. Follow System matches your macOS setting." = "Choose how ClipDeck looks. Follow System matches your macOS setting.";
+
+/* Settings */
+"ClipDeck Preferences" = "ClipDeck Preferences";
+"Keyboard Shortcut" = "Keyboard Shortcut";
+"Recording…" = "Recording…";
+"Cancel" = "Cancel";
+"Reset to default" = "Reset to default";
+"Choose the global shortcut used to show or hide ClipDeck. Press a combination with at least one modifier key." = "Choose the global shortcut used to show or hide ClipDeck. Press a combination with at least one modifier key.";
