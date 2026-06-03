@@ -2,6 +2,11 @@
 
 **English** · [中文](README.zh-Hans.md)
 
+[![Release](https://github.com/yaoguohh/clipdeck/actions/workflows/release.yml/badge.svg)](https://github.com/yaoguohh/clipdeck/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/yaoguohh/clipdeck)](https://github.com/yaoguohh/clipdeck/releases/latest)
+[![License: MIT](https://img.shields.io/github/license/yaoguohh/clipdeck)](LICENSE)
+![Platform: macOS 14+](https://img.shields.io/badge/platform-macOS%2014%2B-blue)
+
 ClipDeck is a local-first macOS clipboard manager — a keyboard-first floating panel of visual
 clip cards, built natively in Swift / AppKit + SwiftUI.
 
