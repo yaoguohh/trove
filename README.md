@@ -25,8 +25,8 @@ clip cards, built natively in Swift / AppKit + SwiftUI.
 
 ## Install
 
-Download the latest `ClipDeck.zip` from the [Releases](https://github.com/yaoguohh/clipdeck/releases)
-page, unzip, and move `ClipDeck.app` to `/Applications`.
+Download the latest `ClipDeck.dmg` from the [Releases](https://github.com/yaoguohh/clipdeck/releases)
+page, open it, and drag `ClipDeck.app` into the `Applications` folder.
 
 ### First launch (important)
 

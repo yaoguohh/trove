@@ -47,10 +47,18 @@ jobs:
       - name: Verify signature
         run: codesign --verify --deep --strict --verbose=2 .build/ClipDeck.app
 
-      - name: Zip the app
+      - name: Build .dmg
         run: |
           mkdir -p dist
-          ditto -c -k --keepParent .build/ClipDeck.app "dist/ClipDeck.zip"
+          STAGE="$(mktemp -d)"
+          cp -R .build/ClipDeck.app "$STAGE/"
+          ln -s /Applications "$STAGE/Applications"   # drag-to-install; Sparkle ignores the symlink
+          hdiutil create \
+            -volname "ClipDeck" \
+            -srcfolder "$STAGE" \
+            -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov \
+            "dist/ClipDeck.dmg"
+          rm -rf "$STAGE"
 
       - name: Fetch Sparkle CLI tools
         run: |
@@ -75,7 +83,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/ClipDeck.zip
+            dist/ClipDeck.dmg
             dist/appcast.xml
           generate_release_notes: true
       # SUFeedURL points at releases/latest/download/appcast.xml, so uploading appcast.xml as a
