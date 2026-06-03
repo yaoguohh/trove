@@ -75,7 +75,11 @@ codesign --verify --deep --strict --verbose=2 .build/ClipDeck.app   # must say "
 
 ```bash
 mkdir -p dist
-ditto -c -k --keepParent .build/ClipDeck.app dist/ClipDeck.zip
+STAGE="$(mktemp -d)"
+cp -R .build/ClipDeck.app "$STAGE/" && ln -s /Applications "$STAGE/Applications"
+hdiutil create -volname "ClipDeck" -srcfolder "$STAGE" \
+  -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov dist/ClipDeck.dmg
+rm -rf "$STAGE"
 
 # Reads the private key from your Keychain, writes appcast.xml with sparkle:edSignature + deltas.
 # --download-url-prefix makes each enclosure point at the GitHub Release download URL.
@@ -85,7 +89,7 @@ ditto -c -k --keepParent .build/ClipDeck.app dist/ClipDeck.zip
 
 ### 4. Publish
 
-1. Create a GitHub Release tagged `v0.2.0`, uploading **both** `dist/ClipDeck.zip` and
+1. Create a GitHub Release tagged `v0.2.0`, uploading **both** `dist/ClipDeck.dmg` and
    `dist/appcast.xml` as assets.
 2. Done — `releases/latest/download/appcast.xml` now serves the new feed; existing users' Sparkle
    picks it up on the next check and updates silently. Nothing to commit to the repo.
