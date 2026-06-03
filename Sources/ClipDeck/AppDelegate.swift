@@ -102,7 +102,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var runsInBackground: Bool {
-        UserDefaults.standard.bool(forKey: runInBackgroundKey)
+        // Default to background (menu-bar only, no Dock icon), like Maccy / Ice — but honor an
+        // explicit choice once the user has toggled it. `object(forKey:)` is nil until then.
+        UserDefaults.standard.object(forKey: runInBackgroundKey) as? Bool ?? true
     }
 
     private func applyActivationPolicy() {
