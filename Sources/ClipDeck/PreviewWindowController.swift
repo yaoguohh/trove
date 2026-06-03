@@ -30,8 +30,12 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
         window.title = Self.title(for: item)
         window.isReleasedWhenClosed = false
         window.isRestorable = false
-        window.level = .floating
-        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        // Default: a normal-level, MANAGED window so it shows in Mission Control and the window
+        // cycle like any app window. (.floating + the previous behavior set had no Exposé-axis
+        // value, so AppKit defaulted it to .transient — hidden from Mission Control.) The pin
+        // button in ClipPreviewView flips it to .floating + .fullScreenAuxiliary at runtime.
+        window.level = .normal
+        window.collectionBehavior = [.managed, .participatesInCycle]
         window.minSize = NSSize(width: 320, height: 240)
         window.isMovableByWindowBackground = true
         window.delegate = self
@@ -95,38 +99,95 @@ private final class PreviewWindow: NSWindow {
 private struct ClipPreviewView: View {
     let item: ClipboardItem
     let image: NSImage?
+    @State private var isPinned = false
+    @State private var hostWindow: NSWindow?
 
     var body: some View {
-        Group {
-            if let image {
-                Image(nsImage: image)
-                    .resizable()
-                    .interpolation(.high)
-                    .scaledToFit()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color(nsColor: .windowBackgroundColor))
-            } else if item.kind == .image {
-                // An image item whose file went missing — show a clear placeholder, not blank.
-                VStack(spacing: 10) {
-                    Image(systemName: "photo")
-                        .font(.system(size: 40, weight: .medium))
-                    Text("Image unavailable")
-                        .font(.system(size: 14, weight: .semibold))
-                }
-                .foregroundStyle(.secondary)
+        content
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(WindowAccessor { hostWindow = $0 })
+            .overlay(alignment: .topTrailing) { pinButton }
+    }
+
+    @ViewBuilder private var content: some View {
+        if let image {
+            Image(nsImage: image)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(nsColor: .windowBackgroundColor))
-            } else {
-                ScrollView {
-                    Text(item.text)
-                        .font(.system(size: 13))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                        .padding(18)
-                }
-                .background(Color(nsColor: .textBackgroundColor))
+        } else if item.kind == .image {
+            // An image item whose file went missing — show a clear placeholder, not blank.
+            VStack(spacing: 10) {
+                Image(systemName: "photo")
+                    .font(.system(size: 40, weight: .medium))
+                Text("Image unavailable")
+                    .font(.system(size: 14, weight: .semibold))
             }
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(nsColor: .windowBackgroundColor))
+        } else {
+            ScrollView {
+                Text(item.text)
+                    .font(.system(size: 13))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .padding(18)
+            }
+            .background(Color(nsColor: .textBackgroundColor))
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // Toggles "keep on top": flips the host window between a normal, Mission-Control-visible
+    // window and a floating always-on-top one.
+    private var pinButton: some View {
+        Button {
+            isPinned.toggle()
+            applyPin()
+        } label: {
+            Image(systemName: "pin.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .rotationEffect(.degrees(isPinned ? 0 : 45))
+                .foregroundStyle(isPinned ? Color.accentColor : Color.secondary)
+                .frame(width: 26, height: 26)
+                .background(.regularMaterial, in: Circle())
+                .overlay(Circle().stroke(.black.opacity(0.08), lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .help(isPinned ? String(localized: "Unpin") : String(localized: "Keep on Top"))
+        .padding(10)
+    }
+
+    private func applyPin() {
+        guard let hostWindow else { return }
+        // Set BOTH level and collectionBehavior every time — AppKit derives a default behavior
+        // from the level, so flipping only the level would silently revert Mission-Control visibility.
+        hostWindow.level = isPinned ? .floating : .normal
+        var behavior: NSWindow.CollectionBehavior = [.managed, .participatesInCycle]
+        if isPinned { behavior.insert(.fullScreenAuxiliary) }
+        hostWindow.collectionBehavior = behavior
+    }
+}
+
+/// Resolves the host `NSWindow` once the SwiftUI content is on screen, so the pin button can flip
+/// the window's level/collectionBehavior. Uses `viewDidMoveToWindow` (main-thread, no async) to
+/// stay Swift-6 concurrency-clean.
+private struct WindowAccessor: NSViewRepresentable {
+    let onResolve: (NSWindow?) -> Void
+    func makeNSView(context: Context) -> NSView {
+        let view = WindowReaderView()
+        view.onResolve = onResolve
+        return view
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+private final class WindowReaderView: NSView {
+    var onResolve: ((NSWindow?) -> Void)?
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        onResolve?(window)
     }
 }
