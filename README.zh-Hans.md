@@ -2,6 +2,11 @@
 
 [English](README.md) · **中文**
 
+[![Release](https://github.com/yaoguohh/clipdeck/actions/workflows/release.yml/badge.svg)](https://github.com/yaoguohh/clipdeck/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/yaoguohh/clipdeck)](https://github.com/yaoguohh/clipdeck/releases/latest)
+[![License: MIT](https://img.shields.io/github/license/yaoguohh/clipdeck)](LICENSE)
+![Platform: macOS 14+](https://img.shields.io/badge/platform-macOS%2014%2B-blue)
+
 ClipDeck 是一个本地优先的 macOS 剪贴板管理器——键盘优先的悬浮面板,以可视卡片呈现剪贴历史,
 用 Swift / AppKit + SwiftUI 原生构建。
 
