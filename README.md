@@ -12,16 +12,34 @@ clip cards, built natively in Swift / AppKit + SwiftUI.
 
 ## Features
 
-- Menu bar app, optional background (accessory) mode
+- Menu bar app — runs in the background with no Dock icon by default
 - Visual horizontal timeline of clipboard history (text, links, images, code, email, files)
+- **Keyboard-first**: the search field is always focused, so you just type to filter; ←/→ navigate the cards and Return pastes — no clicking, no lost first keystroke
 - Global hotkey (default `⇧⌘V`), re-recordable in Preferences
-- Keyboard-first flow: type to search, ←/→ to move, Return to paste, Esc to close
-- Right-click **Preview** for a full-size, content-adaptive window (compare screenshots / long text)
-- Pinboards (Favorites / Work / Code) with home-screen-style drag-to-reorder
+- **Space** pops a quick-look peek bubble; right-click **Preview** opens a full-size window with Keep-on-Top
+- **Rename** any clip inline in its header (the name is searchable too)
+- Pinboards with custom colors and home-screen-style drag-to-reorder
 - Dock-style translucent glass panel; light/dark via Preferences
 - Link title + favicon previews with local metadata caching
 - In-app auto-updates via [Sparkle](https://sparkle-project.org)
 - Local JSON storage in `~/Library/Application Support/ClipDeck/`
+
+## Keyboard
+
+Summon with `⇧⌘V`, then it's all keyboard:
+
+| Key | Action |
+|---|---|
+| *type* | Filter the history (the search field is always focused) |
+| `←` / `→` | Move the card selection |
+| `⌘←` / `⌘→` | Jump a screenful at a time |
+| `Return` | Paste the selected clip |
+| `⌥Return` | Paste as plain text |
+| `Space` | Quick-look peek bubble for the selected card |
+| `⌦` / `⌘⌫` | Delete the selected clip |
+| `Esc` | Dismiss the peek → clear the search → close the panel |
+
+Mouse: hover a card for the **✎ rename** button; right-click for **Copy / Preview / Rename / Pin / Add to Pinboard / Delete**. Drag a card out to drop its content into another app.
 
 ## Install
 
