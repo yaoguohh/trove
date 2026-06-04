@@ -12,8 +12,10 @@ enum KeyCode {
     static let returnKey = UInt16(kVK_Return)           // 36
     static let keypadEnter = UInt16(kVK_ANSI_KeypadEnter) // 76
     static let delete = UInt16(kVK_Delete)              // 51 — Backspace
+    static let forwardDelete = UInt16(kVK_ForwardDelete) // 117 — ⌦ / fn+Delete (delete a card)
     static let n = UInt16(kVK_ANSI_N)                   // 45 — Emacs-style ⌃N (next)
     static let p = UInt16(kVK_ANSI_P)                   // 35 — Emacs-style ⌃P (previous)
+    static let space = UInt16(kVK_Space)                // 49 — Quick Look peek bubble
 
     /// CGEvent uses CGKeyCode for synthesized keystrokes.
     static let v = CGKeyCode(kVK_ANSI_V)                // 9

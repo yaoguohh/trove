@@ -8,13 +8,21 @@ import SwiftUI
 final class PanelViewModel: ObservableObject {
     @Published var query = ""
     @Published var filter = ClipboardSearchFilter()
-    @Published var selectedID: ClipboardItem.ID?
-    /// false = card row (default, navigation): ←/→ move the selection. true = editing the
-    /// search field: ←/→ move the text cursor. Driven by the controller's key monitor.
-    @Published var isEditing = false
-    /// Bumped on every panel (re)show so the view can reset focus — the SwiftUI view persists
-    /// across orderOut/orderFront and `onAppear` fires only once.
+    @Published var selectedID: ClipboardItem.ID? {
+        didSet {
+            guard selectedID != oldValue else { return }
+            onSelectionChange?()
+        }
+    }
+    /// Called (on the main actor) whenever the selection changes from any source — keyboard, hover,
+    /// or programmatic — so the controller can keep an open Quick Look peek bubble re-fitted to it.
+    var onSelectionChange: (() -> Void)?
+    /// Bumped on every panel (re)show so the view can re-focus the search field — the SwiftUI view
+    /// persists across orderOut/orderFront and `onAppear` fires only once.
     @Published private(set) var showToken = 0
+    /// The card whose title is being renamed inline (nil = not renaming). Drives the rename editor's
+    /// visibility; the actual keyboard focus is the view's single PanelFocus authority.
+    @Published var renamingItemID: ClipboardItem.ID?
 
     let store: ClipboardStore
 
@@ -39,7 +47,7 @@ final class PanelViewModel: ObservableObject {
     func prepareForShow() {
         query = ""
         filter = ClipboardSearchFilter()
-        isEditing = false // default to the card row (navigation), per the two-row model
+        renamingItemID = nil
         selectFirst()
         showToken &+= 1
     }

@@ -2,10 +2,12 @@ import SwiftUI
 
 struct HistorySearchField: View {
     @Binding var query: String
-    /// true while editing (search field focused) — drives the active vs dim look. The card
-    /// row is the default, so the field reads dim until the user types / ↑ / clicks it.
+    /// Drives the active vs dim look.
     var isActive: Bool
-    var searchFocused: FocusState<Bool>.Binding
+    /// The shared single focus authority (see PanelFocus). This field is `.search`.
+    var focus: FocusState<PanelFocus?>.Binding
+    /// Routes a key press to the controller; returns true when it was intercepted (`.handled`).
+    let handleKey: (KeyEquivalent, EventModifiers) -> Bool
     let activate: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -25,7 +27,12 @@ struct HistorySearchField: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: 13, weight: .semibold))
                     .frame(width: 150) // fixed width: animating it shifted the pinboards and made clicks miss
-                    .focused(searchFocused)
+                    .focused(focus, equals: .search)
+                    // Navigation/action keys are intercepted here and routed to the card selection
+                    // (.handled); printable keys and ⌫ return .ignored and edit the search natively.
+                    .onKeyPress { press in
+                        handleKey(press.key, press.modifiers) ? .handled : .ignored
+                    }
                     .onChange(of: query) {
                         activate()
                     }
@@ -54,7 +61,7 @@ struct HistorySearchField: View {
         }
         .contentShape(Capsule())
         .onTapGesture {
-            searchFocused.wrappedValue = true
+            focus.wrappedValue = .search
             activate()
         }
     }

@@ -9,14 +9,20 @@ final class ClipboardPanelController {
     private let onOpenSettings: () -> Void
     private var panel: NSPanel?
     private var hostingController: NSHostingController<ClipboardPanelView>?
-    private var keyMonitor: Any?
-    private var globalEscapeMonitor: Any?
+    // App-lifetime observer (the controller is held by AppDelegate for the whole run), so it never
+    // needs explicit removal; the [weak self] closure keeps it from retaining the controller.
+    private var resignActiveObserver: NSObjectProtocol?
     private let model: PanelViewModel
     private lazy var previewController = PreviewWindowController()
+    private lazy var quickLook = QuickLookBubbleController()
 
     /// Panel corner radius. The glass mask (AppKit) and the content clip (SwiftUI) must use
     /// the same value — keep `ClipboardPanelView`'s 16pt corners in sync with this.
     static let cornerRadius: CGFloat = 16
+
+    /// Panel non-card width (toolbar + side insets around the card strip). Single source of truth for
+    /// both panel sizing (`position()`) and the ⌘←/⌘→ page size (`visibleCardCount()`).
+    private static let chromeWidth: CGFloat = 96
 
     var isVisible: Bool {
         panel?.isVisible == true
@@ -27,6 +33,10 @@ final class ClipboardPanelController {
         self.monitor = monitor
         self.onOpenSettings = onOpenSettings
         self.model = PanelViewModel(store: store)
+        // The Space peek is one-shot: it shows the card selected at the moment Space was pressed.
+        // ANY later selection change (←/→ navigation or hover) dismisses it instead of letting the
+        // bubble follow — a bubble that tracks fast navigation is disorienting.
+        self.model.onSelectionChange = { [weak self] in self?.quickLook.hide() }
     }
 
     func show() {
@@ -42,18 +52,19 @@ final class ClipboardPanelController {
         panel.alphaValue = 1
         position(panel)
         panel.makeKeyAndOrderFront(nil)
-        // Fresh state + refocus the always-on search field on every (re)show. The search
-        // field stays first responder, so typing never loses its first character; the key
-        // monitor below redirects navigation/confirm keys to the highlighted card.
+        // Fresh state on every (re)show. The SwiftUI view focuses the search field (on showToken),
+        // so typing filters immediately with no lost first character, and ←/→ navigate the cards via
+        // the field's onKeyPress interception.
         model.prepareForShow()
-        installKeyMonitor()
     }
 
     /// `animated: false` (default) hides instantly — required during a drag (the
     /// event-tracking run loop defers display updates) and for paste (must be snappy).
     /// `animated: true` plays a drawer-style collapse for plain dismissals (Esc / hotkey).
     func hide(animated: Bool = false) {
-        removeKeyMonitor()
+        // Any panel dismissal (paste, Esc, hotkey, focus loss, drag) also dismisses the peek bubble
+        // — a single chokepoint so the bubble can never outlive the panel.
+        quickLook.hide()
         guard let panel, panel.isVisible, animated else {
             panel?.alphaValue = 0
             panel?.orderOut(nil)
@@ -91,7 +102,8 @@ final class ClipboardPanelController {
             close: { [weak self] in self?.hide() },
             reopen: { [weak self] in self?.show() },
             openSettings: { [weak self] in self?.onOpenSettings() },
-            preview: { [weak self] item in self?.showPreview(item) }
+            preview: { [weak self] item in self?.showPreview(item) },
+            handleKey: { [weak self] key, modifiers in self?.handleKey(key, modifiers) ?? false }
         )
         let hosting = ClickThroughHostingController(rootView: root)
         hostingController = hosting
@@ -165,6 +177,26 @@ final class ClipboardPanelController {
         panel.standardWindowButton(.zoomButton)?.isHidden = true
         panel.contentView = containerView
         self.panel = panel
+
+        // Spotlight-style auto-dismiss: collapse the panel the moment ClipDeck stops being the
+        // active app (the user clicked another app or the desktop). didResignActive fires ONLY on
+        // a true app deactivation — moving focus to our OWN preview/settings window keeps ClipDeck
+        // active, so the panel correctly stays open beneath them for side-by-side comparison.
+        // Because the panel can no longer linger while another app is focused, the old *global* Esc
+        // monitor became unreachable and was removed; the local key monitor's Esc (fires only while
+        // the panel is key) is now the single Esc path. `hidesOnDeactivate` is left false on purpose
+        // so this animated, monitor-cleaning hide() runs instead of AppKit's abrupt orderOut.
+        resignActiveObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            // Delivered on the main queue, so this runs on the main actor.
+            MainActor.assumeIsolated {
+                guard let self, self.isVisible else { return }
+                self.hide(animated: true)
+            }
+        }
     }
 
     /// The display under the mouse, recomputed each show (the global hotkey can summon the
@@ -188,7 +220,7 @@ final class ClipboardPanelController {
         // real geometry); scale the visible card *count* with the display, not the card.
         let cardW = CardMetrics.referenceCardWidth
         let gap = CardMetrics.referenceCardSpacing
-        let chrome: CGFloat = 96            // toolbar + side insets around the card strip
+        let chrome = Self.chromeWidth       // toolbar + side insets around the card strip
 
         // Large displays fill the width edge-to-edge (full-width look on request); a hair of side
         // margin keeps the rounded corners + shadow readable. Smaller displays keep the
@@ -216,124 +248,58 @@ final class ClipboardPanelController {
         panel.setFrame(NSRect(origin: origin, size: NSSize(width: width, height: height)), display: true)
     }
 
-    private func installKeyMonitor() {
-        guard keyMonitor == nil else { return }
-        // Local monitor: receives keyDown before it reaches the (always-focused) search
-        // field, so navigation/confirm keys get redirected to the selected card while typing
-        // and ←/→ text editing still flow through to the field. See handleKeyDown.
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            self?.handleKeyDown(event) ?? event
+    /// Keyboard routing. Called from the search field's `onKeyPress` (the field is always the
+    /// focused field, so this only runs while the panel — not a preview or a rename editor — owns
+    /// the keyboard). Returns true to intercept the key (SwiftUI treats it as `.handled`), false to
+    /// let it fall through and edit the search text. The decision is the pure, unit-tested
+    /// `PanelKeyboard.intent`; this only applies the side effects.
+    func handleKey(_ key: KeyEquivalent, _ modifiers: EventModifiers) -> Bool {
+        guard let panel, panel.isVisible else { return false }
+        // While an input method is composing (Chinese/Japanese/…), Space/Return/arrows/Esc belong to
+        // the candidate window — never intercept them, or e.g. Space (commit candidate) would toggle
+        // the peek. Returning false lets the key fall through to the IME.
+        if isComposingText() { return false }
+        switch PanelKeyboard.intent(
+            key: key,
+            modifiers: modifiers,
+            state: PanelInputState(
+                queryIsEmpty: model.query.isEmpty,
+                hasSelection: model.selectedItem != nil,
+                quickLookVisible: quickLook.isVisible
+            )
+        ) {
+        case .passThrough:
+            return false
+        case .dismissQuickLook:
+            quickLook.hide()
+        case .closePanel:
+            hide(animated: true)
+        case .clearQuery:
+            model.query = ""
+            model.selectFirst()
+        case .paste(let plainText):
+            performPaste(asPlainText: plainText)
+        case .moveSelection(let delta):
+            model.moveSelection(by: delta)
+        case .pageSelection(let direction):
+            model.moveSelection(by: direction * visibleCardCount())
+        case .deleteSelectedCard:
+            deleteSelectedCard()
+        case .toggleQuickLook:
+            // The bubble's expand button hands off to the full standalone preview window.
+            quickLook.onExpand = { [weak self] item in self?.showPreview(item) }
+            quickLook.toggle(model: model, over: panel)
         }
-        // Global monitor: the panel floats above other apps (hidesOnDeactivate = false), so
-        // Esc must dismiss it even when another app is active — where the local monitor no
-        // longer fires. Observe-only; relies on the Accessibility trust ClipDeck already holds.
-        globalEscapeMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, self.isVisible, event.keyCode == KeyCode.escape else { return }
-            self.hide(animated: true)
-        }
+        return true
     }
 
-    private func removeKeyMonitor() {
-        if let keyMonitor {
-            NSEvent.removeMonitor(keyMonitor)
-            self.keyMonitor = nil
-        }
-        if let globalEscapeMonitor {
-            NSEvent.removeMonitor(globalEscapeMonitor)
-            self.globalEscapeMonitor = nil
-        }
-    }
-
-    /// Keyboard model (from the design research): the search field is always first responder;
-    /// this monitor redirects navigation/confirm keys to the highlighted card and consumes
-    /// them (returns nil) so the text cursor doesn't move, while typing and ←/→ in the search
-    /// region pass straight through. IME composition (marked text) is never intercepted.
-    private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
-        guard let panel, panel.isVisible else { return event }
-        // A preview window (or any other ClipDeck window) is key — let it own its keys (so Esc
-        // closes the preview, not the panel). The local monitor is app-wide, so without this
-        // the panel would swallow the preview's Esc.
-        guard panel.isKeyWindow else { return event }
-        // While an input method is composing (Chinese/Japanese/etc.), the candidate window
-        // owns the arrows and Return — never intercept marked (composing) text.
-        if isComposingText() { return event }
-
-        // Arrow keys carry .function/.numericPad in their flags inherently, so gate the
-        // shortcuts on the *real* modifiers (⌘⌃⌥⇧) only — otherwise ←/→/↑/↓ never match.
-        let mods = event.modifierFlags.intersection([.command, .control, .option, .shift])
-        let key = event.keyCode
-
-        // Esc: clear a non-empty search first, otherwise close.
-        if key == KeyCode.escape, mods.isEmpty {
-            if model.query.isEmpty {
-                hide(animated: true)
-            } else {
-                model.query = ""
-                model.selectFirst()
-            }
-            return nil
-        }
-
-        // Return: editing → leave editing for the card row (a lone result is already the
-        // default selection); card row → paste the selection. ⌥Return always pastes as plain.
-        if key == KeyCode.returnKey || key == KeyCode.keypadEnter {
-            if mods == [.option] { performPaste(asPlainText: true); return nil }
-            guard mods.isEmpty else { return event }
-            if model.isEditing, model.filteredItems.count != 1 {
-                // Editing with multiple results: drop to the card row to pick.
-                model.isEditing = false
-            } else {
-                // Card row, or editing with a single result: paste the selection in one press.
-                performPaste(asPlainText: false)
-            }
-            return nil
-        }
-
-        // ⌃N / ⌃P move the card selection (Emacs aliases), leaving the editing field.
-        if mods == [.control] {
-            switch key {
-            case KeyCode.n: model.isEditing = false; model.moveSelection(by: 1); return nil
-            case KeyCode.p: model.isEditing = false; model.moveSelection(by: -1); return nil
-            default: return event
-            }
-        }
-
-        guard mods.isEmpty else { return event }
-
-        if model.isEditing {
-            // Editing the search field: ↓ drops to the card row, ↑ is a no-op (already top),
-            // and ←/→ + typing + backspace flow to the field.
-            switch key {
-            case KeyCode.downArrow: model.isEditing = false; return nil
-            case KeyCode.upArrow: return nil
-            default: return event
-            }
-        }
-
-        // Card row (default): ←/→ move the selection, ↑ goes up to the search field, ↓ is a
-        // no-op (already the bottom row). A printable key (or backspace) enters editing,
-        // carrying the keystroke so the first character is never lost.
-        switch key {
-        case KeyCode.leftArrow: model.moveSelection(by: -1); return nil
-        case KeyCode.rightArrow: model.moveSelection(by: 1); return nil
-        case KeyCode.upArrow: model.isEditing = true; return nil
-        case KeyCode.downArrow: return nil
-        case KeyCode.delete:
-            if !model.query.isEmpty {
-                model.query.removeLast()
-                model.isEditing = true
-            }
-            return nil
-        default:
-            // A printable key enters editing, carrying the keystroke so the first char isn't lost.
-            guard let chars = event.characters, let scalar = chars.unicodeScalars.first,
-                  scalar.value >= 0x20, scalar.value < 0xF700, scalar.value != 0x7F else {
-                return event
-            }
-            model.query.append(chars)
-            model.isEditing = true
-            return nil
-        }
+    /// True while an input method has uncommitted (marked) text in the search field, so the
+    /// candidate window — not our shortcuts — owns Space/Return/arrows. Checks both the panel's first
+    /// responder and its shared field editor, since SwiftUI may route input through either.
+    private func isComposingText() -> Bool {
+        if let textView = panel?.firstResponder as? NSTextView, textView.hasMarkedText() { return true }
+        if let editor = panel?.fieldEditor(false, for: nil) as? NSTextView, editor.hasMarkedText() { return true }
+        return false
     }
 
     private func performPaste(asPlainText: Bool) {
@@ -342,25 +308,37 @@ final class ClipboardPanelController {
         monitor.copyAndPaste(item, asPlainText: asPlainText)
     }
 
+    /// Delete the selected card (⌦ or ⌘⌫) and re-select a sensible neighbor at the same position so
+    /// the user can keep deleting without losing their place. The panel stays open; an open peek
+    /// re-fits (or hides if the list emptied) via the selection-change hook.
+    private func deleteSelectedCard() {
+        guard let item = model.selectedItem else { return }
+        let index = model.filteredItems.firstIndex { $0.id == item.id } ?? 0
+        store.delete(item)
+        let remaining = model.filteredItems
+        model.selectedID = remaining.isEmpty ? nil : remaining[min(index, remaining.count - 1)].id
+    }
+
+    /// Roughly how many cards are visible across the panel — the page size for ⌘←/⌘→. Derived from
+    /// the panel width and the card's reference footprint (the count, not the card, scales with the
+    /// display, so the reference width tracks the on-screen card).
+    private func visibleCardCount() -> Int {
+        guard let panel else { return 3 }
+        let chrome = Self.chromeWidth
+        let unit = CardMetrics.referenceCardWidth + CardMetrics.referenceCardSpacing
+        guard unit > 0 else { return 3 }
+        return max(1, Int((panel.frame.width - chrome) / unit))
+    }
+
     /// Open a standalone, content-adaptive preview window for the item. The panel stays open
     /// (floating beneath the preview) so the user can keep comparing items.
     private func showPreview(_ item: ClipboardItem) {
         previewController.show(item, near: panel?.screen)
     }
-
-    /// True while an input method has uncommitted (marked) text, so the candidate window —
-    /// not our shortcuts — owns the arrows/Return. Checks both the panel's first responder
-    /// and its field editor, since SwiftUI may route input through either.
-    private func isComposingText() -> Bool {
-        if let textView = panel?.firstResponder as? NSTextView, textView.hasMarkedText() { return true }
-        if let editor = panel?.fieldEditor(false, for: nil) as? NSTextView, editor.hasMarkedText() { return true }
-        return false
-    }
 }
 
-/// A borderless, non-activating panel that can still become key so the hosted
-/// SwiftUI view receives keyboard events. Arrow/return selection is handled by the
-/// SwiftUI view's `.onKeyPress`; Escape by the controller's local event monitor.
+/// A borderless panel that can still become key so the hosted SwiftUI search field can focus and
+/// receive keyboard input; navigation/action keys are intercepted by the field's `.onKeyPress`.
 private final class ClipDeckPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }

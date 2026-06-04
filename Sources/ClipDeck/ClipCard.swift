@@ -8,6 +8,15 @@ struct ClipCard: View {
     let isHovered: Bool
     let searchQuery: String
     let metrics: CardMetrics
+    // Inline title rename. isRenaming + the callbacks are defaulted so off-screen renders (the drag
+    // image) can omit them; `renameFocus` is required — a FocusState.Binding can't have a default, and
+    // every live call site (the timeline ForEach and the drag-image render) provides $focus.
+    var isRenaming: Bool = false
+    var renameText: Binding<String> = .constant("")
+    var onCommitRename: () -> Void = {}
+    var onCancelRename: () -> Void = {}
+    /// The shared single focus authority; this card's editor is `.rename(item.id)`.
+    var renameFocus: FocusState<PanelFocus?>.Binding
 
     private var sourceStyle: SourceAppStyle {
         SourceAppStyle.resolve(for: item.sourceApp)
@@ -28,7 +37,12 @@ struct ClipCard: View {
                     item: item,
                     sourceStyle: sourceStyle,
                     accentPalette: accentPalette,
-                    metrics: metrics
+                    metrics: metrics,
+                    isRenaming: isRenaming,
+                    renameText: renameText,
+                    renameFocus: renameFocus,
+                    onCommit: onCommitRename,
+                    onCancel: onCancelRename
                 )
             },
             content: {
@@ -36,6 +50,7 @@ struct ClipCard: View {
             },
             footer: {
                 ClipCardFooter(
+                    createdAt: item.createdAt,
                     pinboard: pinboard,
                     characterCount: item.characterCount,
                     index: index,
@@ -145,6 +160,13 @@ private struct ClipCardHeader: View {
     let sourceStyle: SourceAppStyle
     let accentPalette: [Color]
     let metrics: CardMetrics
+    let isRenaming: Bool
+    let renameText: Binding<String>
+    let renameFocus: FocusState<PanelFocus?>.Binding
+    let onCommit: () -> Void
+    let onCancel: () -> Void
+
+    private var titleFont: Font { .system(size: max(13, metrics.titleSize - 1), weight: .bold) }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -169,22 +191,33 @@ private struct ClipCardHeader: View {
                         .foregroundStyle(.secondary)
                         .rotationEffect(.degrees(45))
                 }
-                Text(item.kind.title)
-                    .font(.system(size: max(13, metrics.titleSize - 1), weight: .bold))
-                    .foregroundStyle(.primary)
-                Text(item.createdAt, style: .relative)
-                    .font(.system(size: max(10, metrics.footerSize - 2), weight: .semibold))
-                    .foregroundStyle(.secondary)
+                if isRenaming {
+                    // Borderless, in-place editor: same font as the title, no separate box. Focus is
+                    // driven by the shared PanelFocus authority (set to .rename(id) by startRename),
+                    // not a local @FocusState — so it focuses reliably and never cross-talks.
+                    TextField("", text: renameText, prompt: Text(item.kind.title))
+                        .textFieldStyle(.plain)
+                        .font(titleFont)
+                        .foregroundStyle(.primary)
+                        .focused(renameFocus, equals: .rename(item.id))
+                        .onSubmit(onCommit)
+                        .onExitCommand(perform: onCancel) // Esc cancels
+                } else {
+                    // A custom name (Rename) replaces the kind label; the kind is still conveyed by
+                    // the source icon. Untitled clips fall back to the kind ("Text", …).
+                    Text(item.title ?? item.kind.title)
+                        .font(titleFont)
+                        .foregroundStyle(.primary)
+                }
             }
             .lineLimit(1)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            // Fill the header height with leading alignment → title/editor sit vertically centered.
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .padding(.leading, metrics.cornerRadius * 0.82)
             .padding(.trailing, metrics.iconSize + 12)
-            .padding(.top, 9)
 
             SourceIcon(item: item, style: sourceStyle, size: metrics.iconSize)
                 .padding(.trailing, 8)
-                // Vertically center the source icon within the gradient header (was top-aligned).
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
         }
         .frame(height: metrics.headerHeight)
@@ -225,13 +258,19 @@ private struct ClipCardHeader: View {
 private struct ClipCardFooter: View {
     @Environment(\.colorScheme) private var colorScheme
 
+    let createdAt: Date
     let pinboard: Pinboard?
     let characterCount: Int
     let index: Int
     let metrics: CardMetrics
 
     var body: some View {
-        HStack {
+        HStack(spacing: 8) {
+            // Relative time lives at the bottom-left now (moved out of the header).
+            Text(createdAt, style: .relative)
+                .font(.system(size: metrics.footerSize, weight: .medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
             if let pinboard {
                 Text(pinboard.name)
                     .footerChip(background: colorScheme == .dark ? .white.opacity(0.10) : .black.opacity(0.07), metrics: metrics)

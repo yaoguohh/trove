@@ -127,6 +127,14 @@ final class ClipboardStore: ObservableObject {
         scheduleSave()
     }
 
+    /// Set or clear a clip's custom display name (shown in the card header; also searchable). An
+    /// empty/nil name reverts the card to its kind label.
+    func rename(_ item: ClipboardItem, to title: String?) {
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        items[index].title = title
+        scheduleSave()
+    }
+
     func createPinboard(named name: String, colorName: String = "blue") {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -181,6 +189,7 @@ final class ClipboardStore: ObservableObject {
         guard !trimmed.isEmpty else { return candidates }
         return candidates.filter {
             $0.text.localizedCaseInsensitiveContains(trimmed) ||
+            ($0.title?.localizedCaseInsensitiveContains(trimmed) ?? false) ||
             $0.sourceApp.localizedCaseInsensitiveContains(trimmed) ||
             $0.kind.title.localizedCaseInsensitiveContains(trimmed)
         }

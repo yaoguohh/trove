@@ -9,18 +9,27 @@ struct ClipboardPanelView: View {
     let reopen: () -> Void
     let openSettings: () -> Void
     let preview: (ClipboardItem) -> Void
+    /// Routes a key press to the controller (returns true when intercepted). Driven by the search
+    /// field's onKeyPress.
+    let handleKey: (KeyEquivalent, EventModifiers) -> Bool
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var hoveredID: ClipboardItem.ID?
     @State private var suppressHoverScroll = false
+    // Last real pointer location (global). Hover only moves the selection when this changes, so a
+    // card scrolling under a stationary pointer can't hijack the keyboard selection.
+    @State private var lastHoverLocation: CGPoint?
     @State private var draggingPinboardID: UUID?
     @State private var dragCursorX: CGFloat = 0
     @State private var dragGrabOffset: CGFloat = 0
     @State private var dragTargetIndex: Int?
     @State private var chipFrames: [UUID: CGRect] = [:]
-    // The search field is always the text first responder (so the first keystroke is never
-    // lost). ↑/↓ move the card selection via the controller's key monitor; ←/→ edit text.
-    @FocusState private var searchFocused: Bool
+    // Inline title rename: the draft text. `model.renamingItemID` (shared with the controller) marks
+    // which card is being edited; the in-header editor (ClipCardHeader) owns its own focus.
+    @State private var renameDraft = ""
+    // Single focus authority: exactly one of `.search` / `.rename(id)` is focused at a time, so the
+    // search field and a card's rename editor can never cross-talk (atomic mutual exclusion).
+    @FocusState private var focus: PanelFocus?
 
     private static let toolbarSpacing: CGFloat = 14
     // Shared height for every toolbar item so they share one vertical center / equal top margin.
@@ -50,23 +59,23 @@ struct ClipboardPanelView: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: ClipboardPanelController.cornerRadius, style: .continuous))
         .onTapGesture {
-            // Clicking empty panel chrome leaves editing for the card row.
-            model.isEditing = false
+            // Clicking empty panel chrome re-focuses the search field.
+            focus = .search
         }
         .onAppear {
             model.selectFirst()
+            focus = .search
         }
         .onChange(of: model.showToken) {
-            // Every (re)show starts on the card row (not editing), per the two-row model.
-            searchFocused = false
+            // Every (re)show focuses the search field: typing filters immediately (no lost first
+            // char) and ←/→ navigate the cards via the field's onKeyPress interception.
+            focus = .search
         }
-        .onChange(of: model.isEditing) {
-            // Editing state owns the search-field focus (so the caret shows only when editing).
-            searchFocused = model.isEditing
-        }
-        .onChange(of: searchFocused) {
-            // Keep them in lockstep both ways so focus and editing don't desync.
-            model.isEditing = searchFocused
+        .onChange(of: focus) {
+            // Focus leaving a rename editor (clicking elsewhere / Tab) commits that rename.
+            if let id = model.renamingItemID, focus != .rename(id) {
+                commitRenameByID(id)
+            }
         }
         .onChange(of: model.query) {
             model.selectFirst()
@@ -88,7 +97,6 @@ struct ClipboardPanelView: View {
             Button {
                 model.filter = ClipboardSearchFilter()
                 model.query = ""
-                model.isEditing = false
                 model.selectFirst()
             } label: {
                 Image(systemName: "arrow.triangle.2.circlepath")
@@ -103,8 +111,9 @@ struct ClipboardPanelView: View {
 
             HistorySearchField(
                 query: $model.query,
-                isActive: model.isEditing,
-                searchFocused: $searchFocused,
+                isActive: focus == .search,
+                focus: $focus,
+                handleKey: handleKey,
                 activate: {
                     model.filter.scope = .history
                     model.filter.pinboardID = nil
@@ -172,7 +181,8 @@ struct ClipboardPanelView: View {
                 Label("Clear History", systemImage: "trash")
             }
             Button {
-                close()
+                // openSettings() (→ AppDelegate.showPreferences) closes the panel itself, so all
+                // entry points share one behavior; no explicit close() needed here.
                 openSettings()
             } label: {
                 Label("Preferences...", systemImage: "gearshape")
@@ -206,7 +216,12 @@ struct ClipboardPanelView: View {
                                         isSelected: model.selectedID == item.id,
                                         isHovered: hoveredID == item.id,
                                         searchQuery: model.query,
-                                        metrics: metrics
+                                        metrics: metrics,
+                                        isRenaming: model.renamingItemID == item.id,
+                                        renameText: $renameDraft,
+                                        onCommitRename: { commitRename(item) },
+                                        onCancelRename: { cancelRename() },
+                                        renameFocus: $focus
                                     )
                                     .id(item.id)
                                     .contentShape(Rectangle())
@@ -237,17 +252,44 @@ struct ClipboardPanelView: View {
                                                 dragImage(for: item, index: index, metrics: metrics)
                                             }
                                         )
+                                        // Disable click/drag on the card being renamed so a stray
+                                        // body click can't paste mid-edit.
+                                        .allowsHitTesting(model.renamingItemID != item.id)
+                                    }
+                                    // Hover "rename" pencil, layered ABOVE the drag surface so it
+                                    // stays clickable (the editor itself lives inside the header).
+                                    .overlay(alignment: .topTrailing) {
+                                        if hoveredID == item.id, model.renamingItemID == nil {
+                                            renamePencil(for: item, metrics: metrics)
+                                        }
                                     }
                                     .zIndex(hoveredID == item.id ? 20 : model.selectedID == item.id ? 10 : 0)
-                                    .onHover { isHovering in
-                                        withAnimation(.spring(response: 0.22, dampingFraction: 0.78)) {
-                                            hoveredID = isHovering ? item.id : nil
-                                        }
-                                        // Hovering moves the selection ring to follow the mouse,
-                                        // but must not auto-scroll (the card is already visible).
-                                        if isHovering, model.selectedID != item.id {
-                                            suppressHoverScroll = true
-                                            model.selectedID = item.id
+                                    .onContinuousHover(coordinateSpace: .global) { phase in
+                                        switch phase {
+                                        case .active(let location):
+                                            if hoveredID != item.id {
+                                                withAnimation(.spring(response: 0.22, dampingFraction: 0.78)) {
+                                                    hoveredID = item.id
+                                                }
+                                            }
+                                            // Only let hover steal the keyboard selection on a REAL
+                                            // pointer move — NOT when a card scrolls/lays out under a
+                                            // stationary pointer (that fires hover at the same global
+                                            // location), which used to snap the selection backwards.
+                                            let moved = lastHoverLocation.map {
+                                                hypot(location.x - $0.x, location.y - $0.y) > 0.5
+                                            } ?? true
+                                            if moved, model.selectedID != item.id {
+                                                suppressHoverScroll = true
+                                                model.selectedID = item.id
+                                            }
+                                            lastHoverLocation = location
+                                        case .ended:
+                                            if hoveredID == item.id {
+                                                withAnimation(.spring(response: 0.22, dampingFraction: 0.78)) {
+                                                    hoveredID = nil
+                                                }
+                                            }
                                         }
                                     }
                                     .contextMenu {
@@ -312,6 +354,13 @@ struct ClipboardPanelView: View {
             Label("Preview", systemImage: "eye.square")
         }
 
+        // Rename inline in the card header (also searchable).
+        Button {
+            startRename(item)
+        } label: {
+            Label("Rename", systemImage: "square.and.pencil")
+        }
+
         Divider()
 
         // Organize.
@@ -349,6 +398,59 @@ struct ClipboardPanelView: View {
         monitor.copyAndPaste(item)
     }
 
+    // MARK: - Inline title rename
+
+    private func startRename(_ item: ClipboardItem) {
+        renameDraft = item.title ?? ""
+        // Render the editor (renamingItemID drives its visibility), then move the single focus
+        // authority onto it. External assignment is more reliable than the cell focusing itself.
+        model.renamingItemID = item.id
+        focus = .rename(item.id)
+    }
+
+    private func commitRename(_ item: ClipboardItem) {
+        guard model.renamingItemID == item.id else { return }
+        let name = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        store.rename(item, to: name.isEmpty ? nil : name)
+        model.renamingItemID = nil
+        if focus == .rename(item.id) { focus = .search }
+    }
+
+    private func cancelRename() {
+        // Clear visibility BEFORE moving focus, so the onChange(focus) blur-commit sees no pending
+        // rename and discards instead of saving.
+        model.renamingItemID = nil
+        focus = .search
+    }
+
+    /// Commit the rename for a given id when focus leaves its editor (blur-commit).
+    private func commitRenameByID(_ id: ClipboardItem.ID) {
+        if let item = filteredItems.first(where: { $0.id == id }) {
+            commitRename(item)
+        } else {
+            model.renamingItemID = nil
+        }
+    }
+
+    /// Hover affordance: a square.and.pencil button in the header (left of the source icon),
+    /// vertically centered in the gradient bar.
+    private func renamePencil(for item: ClipboardItem, metrics: CardMetrics) -> some View {
+        Button {
+            startRename(item)
+        } label: {
+            Image(systemName: "square.and.pencil")
+                .font(.system(size: max(12, metrics.titleSize - 2), weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 24, height: 24)
+                .background(.regularMaterial, in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(String(localized: "Rename"))
+        .padding(.trailing, metrics.iconSize + 14)
+        .padding(.top, max(4, (metrics.headerHeight - 24) / 2))
+    }
+
     /// A 1:1 snapshot of the on-screen card, used as the drag preview so the floating image
     /// matches exactly (gradient header, source icon, body, footer, rounded corners).
     @MainActor
@@ -360,7 +462,8 @@ struct ClipboardPanelView: View {
             isSelected: false,
             isHovered: false,
             searchQuery: model.query,
-            metrics: metrics
+            metrics: metrics,
+            renameFocus: $focus
         )
         .frame(width: metrics.width, height: metrics.height)
         .environment(\.colorScheme, colorScheme)

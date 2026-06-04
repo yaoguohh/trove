@@ -41,6 +41,9 @@ final class CardDragView: NSView, NSDraggingSource {
     private var mouseDownEvent: NSEvent?
     private var mouseDownPoint = NSPoint.zero
     private var draggingDidBegin = false
+    /// Whether the panel was already key when the press began. A click that merely re-focuses the
+    /// panel — dismissing a context menu, returning from a preview — must NOT also paste.
+    private var windowWasKeyOnMouseDown = false
 
     override var isFlipped: Bool { true }
 
@@ -49,6 +52,7 @@ final class CardDragView: NSView, NSDraggingSource {
     }
 
     override func mouseDown(with event: NSEvent) {
+        windowWasKeyOnMouseDown = window?.isKeyWindow ?? false
         mouseDownEvent = event
         mouseDownPoint = convert(event.locationInWindow, from: nil)
         draggingDidBegin = false
@@ -76,8 +80,13 @@ final class CardDragView: NSView, NSDraggingSource {
         defer {
             mouseDownEvent = nil
             draggingDidBegin = false
+            windowWasKeyOnMouseDown = false
         }
         guard !draggingDidBegin else { return }
+        // First-mouse clicks (panel wasn't key — a context-menu dismissal or returning from a
+        // preview) only re-focus the panel; they must not trigger a paste. Otherwise repeated
+        // right-clicking could land a dismissal click on a card and wrongly paste + switch apps.
+        guard windowWasKeyOnMouseDown else { return }
         onClick?()
     }
 
