@@ -34,10 +34,14 @@
 "None" = "None";
 "Copy" = "Copy";
 "Preview" = "Preview";
+"Open Full Preview" = "Open Full Preview";
 "Keep on Top" = "Keep on Top";
 "Delete" = "Delete";
 "Delete Pinboard" = "Delete Pinboard";
 "Image unavailable" = "Image unavailable";
+
+/* Rename */
+"Rename" = "Rename";
 
 /* Appearance */
 "Appearance" = "Appearance";
