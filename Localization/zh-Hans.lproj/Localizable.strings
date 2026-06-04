@@ -28,16 +28,20 @@
 "Type" = "类型";
 "All" = "全部";
 "Clear History" = "清空历史";
-"Pin" = "固定";
-"Unpin" = "取消固定";
-"Move to Pinboard" = "移动到收藏板";
+"Pin" = "置顶";
+"Unpin" = "取消置顶";
+"Move to Pinboard" = "收藏到";
 "None" = "无";
 "Copy" = "复制";
 "Preview" = "预览";
+"Open Full Preview" = "打开完整预览";
 "Keep on Top" = "置顶显示";
 "Delete" = "删除";
 "Delete Pinboard" = "删除收藏板";
 "Image unavailable" = "图片不可用";
+
+/* Rename */
+"Rename" = "重命名";
 
 /* Appearance */
 "Appearance" = "外观";
