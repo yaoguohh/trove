@@ -152,6 +152,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showPreferences() {
+        // Close the floating panel before opening Settings. The panel is `.floating` while the
+        // Settings window is a normal-level window, so leaving the panel up would (a) hide Settings
+        // behind it and (b) strand the panel on screen — with the global Esc monitor gone, only the
+        // panel's own key window can Esc-dismiss it, and Settings steals key. Closing here routes
+        // ALL entry points (status menu, ⌘, shortcut, and the in-panel menu) through one consistent
+        // behavior, matching the transient-panel model: navigating to Settings dismisses the panel.
+        panelController?.hide()
         settingsController?.show()
     }
 
