@@ -33,7 +33,7 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
         // Default: a normal-level, MANAGED window so it shows in Mission Control and the window
         // cycle like any app window. (.floating + the previous behavior set had no Exposé-axis
         // value, so AppKit defaulted it to .transient — hidden from Mission Control.) The pin
-        // button in ClipPreviewView flips it to .floating + .fullScreenAuxiliary at runtime.
+        // button in the titlebar (a trailing accessory) flips it to .floating + .fullScreenAuxiliary.
         window.level = .normal
         window.collectionBehavior = [.managed, .participatesInCycle]
         window.minSize = NSSize(width: 320, height: 240)
@@ -46,6 +46,18 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
         hosting.sizingOptions = [.minSize]
         window.contentViewController = hosting
         window.setContentSize(size)
+
+        // Keep-on-Top control as a trailing TITLEBAR accessory, so it sits in the top-right corner
+        // of the titlebar instead of floating over the content. Each window owns its own pin state.
+        let pinAccessory = NSTitlebarAccessoryViewController()
+        pinAccessory.layoutAttribute = .trailing
+        let pinHost = NSHostingView(rootView: PinTitlebarButton(apply: { [weak window] pinned in
+            guard let window else { return }
+            Self.applyPin(pinned, to: window)
+        }))
+        pinHost.frame = NSRect(x: 0, y: 0, width: 42, height: 28)
+        pinAccessory.view = pinHost
+        window.addTitlebarAccessoryViewController(pinAccessory)
 
         let frame = window.frame
         window.setFrameOrigin(NSPoint(
@@ -86,6 +98,17 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
         let trimmed = item.preview.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? item.kind.title : String(trimmed.prefix(60))
     }
+
+    /// Flip a preview window between a normal, Mission-Control-visible window and a floating,
+    /// always-on-top one. Set BOTH level and collectionBehavior every time — AppKit derives a
+    /// default behavior from the level, so flipping only the level would silently revert
+    /// Mission-Control visibility.
+    private static func applyPin(_ pinned: Bool, to window: NSWindow) {
+        window.level = pinned ? .floating : .normal
+        var behavior: NSWindow.CollectionBehavior = [.managed, .participatesInCycle]
+        if pinned { behavior.insert(.fullScreenAuxiliary) }
+        window.collectionBehavior = behavior
+    }
 }
 
 /// Esc closes the preview (the standard cancel action). The panel's key monitor bails when the
@@ -99,14 +122,10 @@ private final class PreviewWindow: NSWindow {
 private struct ClipPreviewView: View {
     let item: ClipboardItem
     let image: NSImage?
-    @State private var isPinned = false
-    @State private var hostWindow: NSWindow?
 
     var body: some View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(WindowAccessor { hostWindow = $0 })
-            .overlay(alignment: .topTrailing) { pinButton }
     }
 
     @ViewBuilder private var content: some View {
@@ -140,54 +159,26 @@ private struct ClipPreviewView: View {
         }
     }
 
-    // Toggles "keep on top": flips the host window between a normal, Mission-Control-visible
-    // window and a floating always-on-top one.
-    private var pinButton: some View {
+}
+
+/// The Keep-on-Top toggle hosted in the preview window's titlebar (trailing accessory). Owns its
+/// pinned state and calls back to flip the window's level/collectionBehavior.
+private struct PinTitlebarButton: View {
+    let apply: (Bool) -> Void
+    @State private var isPinned = false
+
+    var body: some View {
         Button {
             isPinned.toggle()
-            applyPin()
+            apply(isPinned)
         } label: {
-            Image(systemName: "pin.fill")
-                .font(.system(size: 12, weight: .semibold))
-                .rotationEffect(.degrees(isPinned ? 0 : 45))
+            Image(systemName: isPinned ? "pin.fill" : "pin")
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(isPinned ? Color.accentColor : Color.secondary)
-                .frame(width: 26, height: 26)
-                .background(.regularMaterial, in: Circle())
-                .overlay(Circle().stroke(.black.opacity(0.08), lineWidth: 0.5))
+                .frame(width: 32, height: 22)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(isPinned ? String(localized: "Unpin") : String(localized: "Keep on Top"))
-        .padding(10)
-    }
-
-    private func applyPin() {
-        guard let hostWindow else { return }
-        // Set BOTH level and collectionBehavior every time — AppKit derives a default behavior
-        // from the level, so flipping only the level would silently revert Mission-Control visibility.
-        hostWindow.level = isPinned ? .floating : .normal
-        var behavior: NSWindow.CollectionBehavior = [.managed, .participatesInCycle]
-        if isPinned { behavior.insert(.fullScreenAuxiliary) }
-        hostWindow.collectionBehavior = behavior
-    }
-}
-
-/// Resolves the host `NSWindow` once the SwiftUI content is on screen, so the pin button can flip
-/// the window's level/collectionBehavior. Uses `viewDidMoveToWindow` (main-thread, no async) to
-/// stay Swift-6 concurrency-clean.
-private struct WindowAccessor: NSViewRepresentable {
-    let onResolve: (NSWindow?) -> Void
-    func makeNSView(context: Context) -> NSView {
-        let view = WindowReaderView()
-        view.onResolve = onResolve
-        return view
-    }
-    func updateNSView(_ nsView: NSView, context: Context) {}
-}
-
-private final class WindowReaderView: NSView {
-    var onResolve: ((NSWindow?) -> Void)?
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        onResolve?(window)
     }
 }
