@@ -30,6 +30,11 @@ final class QuickLookBubbleController {
     /// full content lives in the inspect window — so capping both the `boundingRect` measure and the
     /// `Text` layout keeps a multi-MB clip from being laid out just to peek at its first lines.
     static let bubbleTextCap = 4_000
+    /// The expand control sits in its own top-right "chrome" band (like the inspect window's pin button
+    /// living in the titlebar) so it never overlaps the content. `frame`/`bubbleSize` reserve this band
+    /// — its height plus the gap below it — on top of the measured content.
+    static let expandControlHeight: CGFloat = 24
+    static let expandControlSpacing: CGFloat = 6
 
     var isVisible: Bool { window?.isVisible == true }
 
@@ -119,6 +124,7 @@ final class QuickLookBubbleController {
         let maxBubbleW = max(240, min(visible.width * 0.70, visible.width - 8 - margin * 2))
         let maxContentW = maxBubbleW - Self.contentInset * 2
         let maxContentH = maxBubbleH - Self.contentInset * 2 - Self.tailHeight
+            - Self.expandControlHeight - Self.expandControlSpacing
 
         let content = Self.bubbleSize(for: item, maxContentW: maxContentW, maxContentH: maxContentH)
         let winW = content.width + margin * 2
@@ -141,7 +147,8 @@ final class QuickLookBubbleController {
     static func bubbleSize(for item: ClipboardItem, maxContentW: CGFloat, maxContentH: CGFloat) -> NSSize {
         let inset = contentInset
         func wrap(_ w: CGFloat, _ h: CGFloat) -> NSSize {
-            NSSize(width: w + inset * 2, height: h + inset * 2 + tailHeight)
+            NSSize(width: w + inset * 2,
+                   height: h + inset * 2 + tailHeight + expandControlHeight + expandControlSpacing)
         }
 
         if item.kind == .image {
@@ -197,32 +204,42 @@ private struct QuickLookBubbleView: View {
         return ZStack {
             BubbleTailShape(tailHeight: tail).fill(background)
             BubbleTailShape(tailHeight: tail).stroke(border, lineWidth: 1)
-            content(for: item)
-                .padding(QuickLookBubbleController.contentInset)
-                .padding(.bottom, tail) // keep content clear of the tail notch
+            // The expand control gets its own top-right band (chrome), with the content below it — so
+            // it reads as a fixed window control, never sitting on top of the text/URL.
+            VStack(alignment: .trailing, spacing: QuickLookBubbleController.expandControlSpacing) {
+                expandButton(item)
+                content(for: item)
+            }
+            .padding(QuickLookBubbleController.contentInset)
+            .padding(.bottom, tail) // keep content clear of the tail notch
         }
         .compositingGroup()
         .shadow(color: .black.opacity(colorScheme == .dark ? 0.55 : 0.22), radius: 16, y: 6)
-        // Drawn after the shadow so the button stays crisp; top-right like a window control.
-        .overlay(alignment: .topTrailing) {
-            expandButton(item).padding(10)
-        }
     }
 
-    /// Quick action: expand this peek into the full-size standalone preview window.
+    /// Quick action: expand this peek. For a single bare URL the icon is an outward ↗ (it opens in the
+    /// default browser); for everything else it's the in-place expand glyph (it opens the inspect
+    /// window). The icon and tooltip mirror what `ClipboardPanelController.showPreview` will actually do.
     private func expandButton(_ item: ClipboardItem) -> some View {
-        Button {
+        let opensInBrowser: Bool
+        if case .openURL = RichPreviewRenderer.expandAction(for: item.text, kind: item.kind) {
+            opensInBrowser = true
+        } else {
+            opensInBrowser = false
+        }
+        return Button {
             expand(item)
         } label: {
-            Image(systemName: "arrow.up.left.and.arrow.down.right")
-                .font(.system(size: 11, weight: .bold))
+            Image(systemName: opensInBrowser ? "arrow.up.right" : "arrow.up.left.and.arrow.down.right")
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 24, height: 24)
+                .frame(width: QuickLookBubbleController.expandControlHeight,
+                       height: QuickLookBubbleController.expandControlHeight)
                 .background(.regularMaterial, in: Circle())
                 .overlay(Circle().stroke(.black.opacity(0.08), lineWidth: 0.5))
         }
         .buttonStyle(.plain)
-        .help(String(localized: "Open Full Preview"))
+        .help(String(localized: opensInBrowser ? "Open Link" : "Open Full Preview"))
     }
 
     @ViewBuilder
