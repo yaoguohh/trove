@@ -73,7 +73,11 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
         window.isMovableByWindowBackground = true
         window.delegate = self
 
-        let hosting = NSHostingController(rootView: ClipPreviewView(item: item, image: image))
+        // Resolve the bounded plain-text body HERE — on the explicit open action — so the bounded
+        // sidecar read happens once off the SwiftUI body (which can re-evaluate many times). Only the
+        // plain-text branch needs it; image/link/json branches ignore it.
+        let plainBody = item.kind == .image ? nil : Self.boundedBody(for: item)
+        let hosting = NSHostingController(rootView: ClipPreviewView(item: item, image: image, plainBody: plainBody))
         // Drop `.intrinsicContentSize` so a `maxWidth/Height: .infinity` root fills the window
         // instead of collapsing to its intrinsic size (the SettingsView blank-window pitfall).
         hosting.sizingOptions = [.minSize]
@@ -155,6 +159,8 @@ private final class PreviewWindow: NSWindow {
 private struct ClipPreviewView: View {
     let item: ClipboardItem
     let image: NSImage?
+    /// Bounded plain-text body, resolved once in `show()` (off the body). Nil for image items.
+    let plainBody: (text: String, isClipped: Bool)?
 
     var body: some View {
         content
@@ -181,14 +187,17 @@ private struct ClipPreviewView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(nsColor: .windowBackgroundColor))
         } else {
-            ScrollView {
-                Text(item.text)
-                    .font(.system(size: 13))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .padding(18)
+            // Detection runs on the bounded inline `text` (cheap); each branch is a pure display
+            // layer. Rich previews live ONLY here, never per-card.
+            switch RichPreviewRenderer.detect(item.text, kind: item.kind) {
+            case .json(let pretty):
+                JSONPreviewView(formatted: pretty, raw: item.text)
+            case .url, .plain:
+                // A single URL opens in the default browser before this window is ever shown (see
+                // ClipboardPanelController.showPreview); the `.url` case here is a defensive fallback
+                // that renders the raw URL as plain text rather than a native web card.
+                BoundedPlainText(bounded: plainBody ?? (item.text, false), isTruncated: item.isTruncated)
             }
-            .background(Color(nsColor: .textBackgroundColor))
         }
     }
 

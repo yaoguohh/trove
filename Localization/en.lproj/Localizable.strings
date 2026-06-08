@@ -40,6 +40,16 @@
 "Delete Pinboard" = "Delete Pinboard";
 "Image unavailable" = "Image unavailable";
 
+/* Large content */
+"Preview shortened for performance; copy or paste delivers the full content." = "Preview shortened for performance; copy or paste delivers the full content.";
+"Truncated" = "Truncated";
+"This clip was too large and was shortened; pasting will not include the full content." = "This clip was too large and was shortened; pasting will not include the full content.";
+
+/* Rich preview */
+"Open Link" = "Open Link";
+"Formatted" = "Formatted";
+"Raw Text" = "Raw Text";
+
 /* Rename */
 "Rename" = "Rename";
 
