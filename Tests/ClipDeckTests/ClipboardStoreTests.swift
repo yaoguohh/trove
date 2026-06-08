@@ -53,6 +53,112 @@ struct ClipboardStoreMutationTests {
 }
 
 @MainActor
+struct ClipboardStoreUndoDeleteTests {
+    @Test func deleteThenUndoRestoresItem() {
+        let (store, _) = makeTempStore()
+        store.add(text: "alpha", sourceApp: "X")
+        let item = store.items[0]
+        store.delete(item)
+        #expect(store.items.contains { $0.id == item.id } == false)
+
+        let restored = store.undoDelete()
+        #expect(restored?.id == item.id)
+        #expect(store.items.contains { $0.id == item.id })
+    }
+
+    @Test func undoRestoresOriginalTimeOrderNotTop() {
+        let (store, _) = makeTempStore()
+        store.add(text: "first", sourceApp: "X")
+        store.add(text: "second", sourceApp: "X")
+        store.add(text: "third", sourceApp: "X") // newest-first: third, second, first
+        let middle = store.items[1]              // "second"
+        store.delete(middle)
+        _ = store.undoDelete()
+        // It re-enters by its own createdAt (the middle), not at the top.
+        #expect(store.items.map(\.text) == ["third", "second", "first"])
+    }
+
+    @Test func multiLevelUndoPopsNewestDeleteFirst() {
+        let (store, _) = makeTempStore()
+        store.add(text: "a", sourceApp: "X")
+        store.add(text: "b", sourceApp: "X")
+        let a = store.items.first { $0.text == "a" }!
+        let b = store.items.first { $0.text == "b" }!
+        store.delete(a)
+        store.delete(b) // undo stack (oldest→newest): [a, b]
+        #expect(store.undoDelete()?.id == b.id)
+        #expect(store.undoDelete()?.id == a.id)
+        #expect(store.undoDelete() == nil)
+    }
+
+    @Test func canUndoDeleteReflectsStack() {
+        let (store, _) = makeTempStore()
+        #expect(store.canUndoDelete == false)
+        store.add(text: "x", sourceApp: "X")
+        store.delete(store.items[0])
+        #expect(store.canUndoDelete)
+        _ = store.undoDelete()
+        #expect(store.canUndoDelete == false)
+    }
+
+    @Test func undoOnEmptyStackReturnsNil() {
+        let (store, _) = makeTempStore()
+        #expect(store.undoDelete() == nil)
+    }
+
+    @Test func undoPreservesPinnedState() {
+        let (store, _) = makeTempStore()
+        store.add(text: "p", sourceApp: "X")
+        store.togglePin(store.items[0])
+        let pinned = store.items.first { $0.text == "p" }!
+        #expect(pinned.isPinned)
+        store.delete(pinned)
+        let restored = store.undoDelete()
+        #expect(restored?.isPinned == true)
+        #expect(store.items.first { $0.id == pinned.id }?.isPinned == true)
+    }
+
+    @Test func undoStackIsBoundedToMaxDepth() {
+        let (store, _) = makeTempStore()
+        for i in 0..<30 { store.add(text: "n\(i)", sourceApp: "X") }
+        for item in store.items { store.delete(item) } // 30 deletes; stack caps at 25
+        var undone = 0
+        while store.undoDelete() != nil { undone += 1 }
+        #expect(undone == 25)
+    }
+
+    @Test func undoDoesNotDuplicateAReCopiedClip() {
+        let (store, _) = makeTempStore()
+        store.add(text: "hello", sourceApp: "X")
+        let x = store.items[0]
+        store.delete(x)
+        store.add(text: "hello", sourceApp: "X") // re-copied while x sits on the undo stack
+        #expect(store.items.count == 1)
+
+        let restored = store.undoDelete()
+        // No duplicate card: undo surfaces the existing live clip instead of re-inserting x.
+        #expect(store.items.filter { $0.text == "hello" }.count == 1)
+        #expect(restored?.text == "hello")
+    }
+
+    @Test func undoDropsPinboardWhenBoardWasDeleted() {
+        let (store, _) = makeTempStore()
+        store.add(text: "p", sourceApp: "X")
+        let board = store.pinboards[0]
+        store.move(store.items[0], to: board) // pin onto a board
+        let pinned = store.items.first { $0.text == "p" }!
+        #expect(pinned.pinboardID == board.id)
+
+        store.delete(pinned)
+        store.deletePinboard(board) // board gone while the clip is on the undo stack
+        let restored = store.undoDelete()
+        // Restored loose, not dangling-pinned to a board that no longer exists.
+        #expect(restored?.pinboardID == nil)
+        #expect(restored?.isPinned == false)
+    }
+}
+
+@MainActor
 struct ClipboardStorePinboardReorderTests {
     // Default seeded order is [Favorites, Work, Code].
     @Test func movesToEnd() {

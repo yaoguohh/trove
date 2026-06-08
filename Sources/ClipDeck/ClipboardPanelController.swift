@@ -265,7 +265,8 @@ final class ClipboardPanelController {
             state: PanelInputState(
                 queryIsEmpty: model.query.isEmpty,
                 hasSelection: model.selectedItem != nil,
-                quickLookVisible: quickLook.isVisible
+                quickLookVisible: quickLook.isVisible,
+                canUndoDelete: store.canUndoDelete
             )
         ) {
         case .passThrough:
@@ -285,6 +286,20 @@ final class ClipboardPanelController {
             model.moveSelection(by: direction * visibleCardCount())
         case .deleteSelectedCard:
             deleteSelectedCard()
+        case .undoDelete:
+            // Restore the most recently deleted card and re-select it so the recovery is visible.
+            if let restored = store.undoDelete() {
+                // If an active filter (a pinboard/kind scope) hides the recovered card, reset to the
+                // full unfiltered history so undo always surfaces what it restored — otherwise
+                // `selectedID` would point at an off-screen row and `selectedItem` would silently fall
+                // back to a DIFFERENT visible card for the next paste. (⌘Z already requires an empty
+                // search query, so the text filter can't be the culprit; the scope filter still can.)
+                if !model.filteredItems.contains(where: { $0.id == restored.id }) {
+                    model.query = ""
+                    model.filter = ClipboardSearchFilter()
+                }
+                model.selectedID = restored.id
+            }
         case .toggleQuickLook:
             // The bubble's expand button hands off to the full standalone preview window.
             quickLook.onExpand = { [weak self] item in self?.showPreview(item) }
