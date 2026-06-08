@@ -26,6 +26,10 @@ final class QuickLookBubbleController {
     static let contentInset: CGFloat = 14
     /// Gap between the tail tip and the panel's top edge.
     static let gap: CGFloat = 6
+    /// Max characters the peek bubble measures and renders. The bubble is a transient glance — the
+    /// full content lives in the inspect window — so capping both the `boundingRect` measure and the
+    /// `Text` layout keeps a multi-MB clip from being laid out just to peek at its first lines.
+    static let bubbleTextCap = 4_000
 
     var isVisible: Bool { window?.isVisible == true }
 
@@ -157,7 +161,7 @@ final class QuickLookBubbleController {
         }
 
         let cw = min(maxContentW, 432)
-        let raw = item.text.isEmpty ? item.kind.title : item.text
+        let raw = item.text.isEmpty ? item.kind.title : String(item.text.prefix(bubbleTextCap))
         let measured = (raw as NSString).boundingRect(
             with: NSSize(width: cw, height: 6000),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
@@ -237,7 +241,7 @@ private struct QuickLookBubbleView: View {
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            Text(item.text)
+            Text(item.text.prefix(QuickLookBubbleController.bubbleTextCap))
                 .font(.system(size: 13))
                 .foregroundStyle(.primary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

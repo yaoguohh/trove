@@ -13,6 +13,39 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
     /// coexist; each is dropped on `windowWillClose`.
     private var windows: Set<NSWindow> = []
 
+    /// UTF-8 byte budget for the inspect window's plain-text `ScrollView`, which lays out the WHOLE
+    /// string (SwiftUI `Text` has no viewport virtualization). The window shows the full clip up to
+    /// this guard and a notice beyond it; copy/paste still deliver the complete content.
+    static let previewWindowCap = 256 * 1024
+
+    /// Bound the inspect-window text to `previewWindowCap` UTF-8 bytes, returning whether it was
+    /// clipped (so the view can show a notice). Truly O(cap): for a spilled clip it reads at most
+    /// `previewWindowCap + 1` bytes from the sidecar via `FileHandle` — it never materializes the whole
+    /// (up-to-ceiling) clip just to show the first 256KB. Resolve this ONCE on the explicit open action
+    /// (`show`), never inside a SwiftUI body. A spilled clip whose sidecar is missing degrades to its
+    /// inline prefix.
+    static func boundedBody(for item: ClipboardItem) -> (text: String, isClipped: Bool) {
+        let budget = previewWindowCap
+        let head: Data
+        let hasMore: Bool
+        if let url = item.textFileURL, let handle = try? FileHandle(forReadingFrom: url) {
+            defer { try? handle.close() }
+            let data = (try? handle.read(upToCount: budget + 1)) ?? Data()
+            hasMore = data.count > budget
+            head = hasMore ? data.prefix(budget) : data
+        } else {
+            // Inline text (no sidecar) is already ≤ inlineTextCap < budget, so it is never clipped.
+            let bytes = Data(item.text.utf8)
+            hasMore = bytes.count > budget
+            head = hasMore ? bytes.prefix(budget) : bytes
+        }
+        var text = String(decoding: head, as: UTF8.self)
+        // A hard byte cut can split a multi-byte scalar, which decodes to a trailing U+FFFD; drop it
+        // (cosmetic) only when we actually clipped.
+        if hasMore { while text.last == "\u{FFFD}" { text.removeLast() } }
+        return (text, hasMore)
+    }
+
     func show(_ item: ClipboardItem, near screen: NSScreen?) {
         let image: NSImage? = item.kind == .image
             ? item.imageFileURL.flatMap { ImageCache.image(at: $0) }

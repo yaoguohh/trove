@@ -24,4 +24,10 @@ enum AppPaths {
     static var imageDirectoryURL: URL {
         applicationSupportSubdirectory("images")
     }
+
+    /// Sidecar `.txt` files holding the full text of clips too large to keep inline in `history.json`
+    /// (mirrors the `images/` PNG sidecar pattern, with the same orphan-reconcile guarantee).
+    static var textDirectoryURL: URL {
+        applicationSupportSubdirectory("texts")
+    }
 }

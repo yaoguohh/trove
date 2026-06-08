@@ -22,21 +22,28 @@ final class ClipboardStore: ObservableObject {
     @Published private(set) var pinboards: [Pinboard] = []
 
     private let maxItems = 500
+    /// Max characters of a clip's text scanned per item per keystroke. Bounds search to O(cap) so a
+    /// huge clip can't make every keystroke walk a multi-MB string. A clip's stored `text` is itself
+    /// bounded once the sidecar storage cap ships, but capping the scan independently means a future
+    /// change to that cap can't silently re-introduce an unbounded per-keystroke scan. Documented
+    /// limitation: a match that occurs ONLY past this prefix (in a clip's sidecar tail) won't surface.
+    private let searchScanCap = 20_000
     private let decoder = JSONDecoder()
     private let fileURL: URL
-    private let managesImageFiles: Bool
+    private let managesSidecarFiles: Bool
     private var isLoading = false
     private var saveGeneration = 0
 
     /// `storeURL` is injectable so tests can run against a temp file without
     /// touching the user's real Application Support directory.
     init(storeURL: URL? = nil) {
-        managesImageFiles = (storeURL == nil)
+        managesSidecarFiles = (storeURL == nil)
         fileURL = storeURL ?? AppPaths.historyFileURL
         load()
         ensureDefaultPinboards()
-        if managesImageFiles {
+        if managesSidecarFiles {
             reconcileImageFiles()
+            reconcileTextFiles()
         }
     }
 
@@ -44,7 +51,17 @@ final class ClipboardStore: ObservableObject {
         let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return }
 
-        if let existing = items.firstIndex(where: { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) == normalized }) {
+        // A clip spills to a sidecar when its NORMALIZED (whitespace-trimmed) length exceeds the
+        // threshold, and its dedup key is the hash of that NORMALIZED form — so a re-copy that differs
+        // only by surrounding whitespace (editors/terminals toggle a trailing newline constantly)
+        // hashes identically and dedups, exactly like the small-clip path. Small clips keep the direct
+        // normalized comparison. The two predicates are mutually exclusive (hashed vs nil-hash).
+        let incomingHash = normalized.count > ClipboardItem.sidecarThreshold ? ClipboardItem.hash(normalized) : nil
+        let existing = dedupIndex(hash: incomingHash, normalizedText: normalized)
+
+        if let existing {
+            // Re-copy of an existing clip: move to the top, refresh source. A big clip's sidecar is
+            // already on disk and unchanged, so nothing is rewritten.
             var item = items.remove(at: existing)
             item.createdAt = Date()
             item.sourceApp = sourceApp
@@ -52,21 +69,98 @@ final class ClipboardStore: ObservableObject {
             item.sourceAppPath = sourceAppPath
             items.insert(item, at: 0)
         } else {
-            // Dedup on the normalized form, but store the original text verbatim so
-            // copied-then-pasted content stays byte-for-byte identical (preserving
-            // any intentional leading/trailing whitespace or newlines).
-            let item = ClipboardItem(
+            let item = makeStoredItem(
                 text: text,
                 sourceApp: sourceApp,
                 sourceBundleIdentifier: sourceBundleIdentifier,
                 sourceAppPath: sourceAppPath,
-                kind: ClipboardItem.detectKind(for: text)
+                normalizedHash: incomingHash
             )
             items.insert(item, at: 0)
         }
 
         trim()
         scheduleSave()
+    }
+
+    /// Index of an existing live clip that dedups against the given content — by `fullTextHash` for a
+    /// spilled clip, else by normalized-text equality. Shared by `add` (ingestion) and `undoDelete`
+    /// (so a restore can't re-create a duplicate of a clip that was re-copied while it sat on the undo
+    /// stack), keeping the single-card-per-content invariant in one place.
+    private func dedupIndex(hash: String?, normalizedText: String) -> Int? {
+        items.firstIndex {
+            if let hash { return $0.fullTextHash == hash }
+            return $0.fullTextHash == nil
+                && $0.text.trimmingCharacters(in: .whitespacesAndNewlines) == normalizedText
+        }
+    }
+
+    /// Builds a clip applying the hybrid storage cap. A clip whose NORMALIZED length is within
+    /// `sidecarThreshold` is stored verbatim inline (the common path — byte-faithful, no IO). Above it,
+    /// the verbatim full text spills to a sidecar `.txt` and only the `inlineTextCap` prefix stays in
+    /// `history.json`. Independently, any text past `ultimateSidecarCeiling` (verbatim) is hard-
+    /// truncated and flagged, bounding even a pathological all-whitespace paste.
+    /// `normalizedHash` (non-nil iff the clip spills) is the precomputed dedup key.
+    private func makeStoredItem(
+        text: String,
+        sourceApp: String,
+        sourceBundleIdentifier: String?,
+        sourceAppPath: String?,
+        normalizedHash: String?
+    ) -> ClipboardItem {
+        var storedText = text
+        var truncated = false
+        if text.count > ClipboardItem.ultimateSidecarCeiling {
+            storedText = String(text.prefix(ClipboardItem.ultimateSidecarCeiling))
+            truncated = true
+        }
+
+        var item = ClipboardItem(
+            text: storedText,
+            sourceApp: sourceApp,
+            sourceBundleIdentifier: sourceBundleIdentifier,
+            sourceAppPath: sourceAppPath,
+            // Kind is display-only (icon/label); detect from a bounded prefix so a multi-MB paste
+            // doesn't scan the whole string several times on the main-thread ingestion path.
+            kind: ClipboardItem.detectKind(for: String(storedText.prefix(ClipboardItem.displayPreviewCap)))
+        )
+        if truncated {
+            // Surface the TRUE original size and mark the clip; paste can't include the lost tail.
+            item.isTruncated = true
+            item.characterCount = text.count
+            item.originalCharacterCount = text.count
+        }
+
+        // Spill iff the clip is big by normalized length (== normalizedHash is set).
+        guard let hash = normalizedHash else { return item }
+
+        guard managesSidecarFiles else {
+            // Injected/test store: no sidecar directory to own. Keep the full text inline but still
+            // record the hash so big-clip dedup is exercised in tests.
+            item.fullTextHash = hash
+            return item
+        }
+
+        let fileName = "\(item.id.uuidString).txt"
+        do {
+            try FileManager.default.createDirectory(at: ClipboardItem.textDirectoryURL, withIntermediateDirectories: true)
+            // The sidecar is written SYNCHRONOUSLY and atomically BEFORE the item enters the array /
+            // history.json. This is deliberate: it guarantees that whenever a persisted item references
+            // a sidecar, that sidecar exists on disk — so `fullText` (paste/copy/drag fidelity) never
+            // races a pending write, and a crash leaves at most an orphan .txt (swept by
+            // reconcileTextFiles on launch), never a dangling reference. The cost is a one-time O(n)
+            // write proportional to clip size, on a deliberate copy of unusual (>20k-char) content —
+            // acceptable, and unlike the old per-render hang it does not repeat.
+            try Data(storedText.utf8).write(to: ClipboardItem.textDirectoryURL.appendingPathComponent(fileName), options: .atomic)
+            item.fullTextHash = hash
+            item.textFileName = fileName
+            item.text = String(storedText.prefix(ClipboardItem.inlineTextCap))
+        } catch {
+            NSLog("ClipDeck text sidecar save failed: \(error.localizedDescription)")
+            // Fall back to full inline so paste fidelity is never silently lost; still allow dedup.
+            item.fullTextHash = hash
+        }
+        return item
     }
 
     func addImage(
@@ -166,6 +260,7 @@ final class ClipboardStore: ObservableObject {
         let removed = items.filter { !$0.isPinned }
         items.removeAll { !$0.isPinned }
         removed.forEach(Self.removeImageFile(for:))
+        removed.forEach(Self.removeTextFile(for:))
         scheduleSave()
     }
 
@@ -188,7 +283,10 @@ final class ClipboardStore: ObservableObject {
         }
         guard !trimmed.isEmpty else { return candidates }
         return candidates.filter {
-            $0.text.localizedCaseInsensitiveContains(trimmed) ||
+            // `prefix(_:)` is O(searchScanCap); scanning only the bounded prefix keeps each keystroke
+            // cheap regardless of clip size. (`localizedCaseInsensitiveContains` bridges the prefix to
+            // NSString — a small, capped ≤searchScanCap copy per item, not the whole clip.)
+            $0.text.prefix(searchScanCap).localizedCaseInsensitiveContains(trimmed) ||
             ($0.title?.localizedCaseInsensitiveContains(trimmed) ?? false) ||
             $0.sourceApp.localizedCaseInsensitiveContains(trimmed) ||
             $0.kind.title.localizedCaseInsensitiveContains(trimmed)
@@ -225,6 +323,7 @@ final class ClipboardStore: ObservableObject {
         let dropped = Array(unpinned.dropFirst(keepCount))
         items = pinned + kept
         dropped.forEach(Self.removeImageFile(for:))
+        dropped.forEach(Self.removeTextFile(for:))
         sortForPins()
     }
 
@@ -321,12 +420,28 @@ final class ClipboardStore: ObservableObject {
         try? FileManager.default.removeItem(at: url)
     }
 
+    nonisolated static func removeTextFile(for item: ClipboardItem) {
+        guard let url = item.textFileURL else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+
     /// Deletes PNG files in the image directory that no item references anymore
     /// (orphans left behind by deletes/trims in prior versions or crashes).
     private func reconcileImageFiles() {
         let directory = AppPaths.imageDirectoryURL
         guard let files = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else { return }
         let referenced = Set(items.compactMap(\.imageFileName))
+        for file in files where !referenced.contains(file) {
+            try? FileManager.default.removeItem(at: directory.appendingPathComponent(file))
+        }
+    }
+
+    /// Deletes sidecar `.txt` files no item references anymore (orphans from a crash between the
+    /// sidecar write and the history persist, or from deletes/trims in a prior run).
+    private func reconcileTextFiles() {
+        let directory = AppPaths.textDirectoryURL
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else { return }
+        let referenced = Set(items.compactMap(\.textFileName))
         for file in files where !referenced.contains(file) {
             try? FileManager.default.removeItem(at: directory.appendingPathComponent(file))
         }

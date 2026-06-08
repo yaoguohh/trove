@@ -107,12 +107,19 @@ struct HighlightedText: View {
         Text(attributedText)
     }
 
+    /// Belt-and-suspenders bound on the string an `AttributedString` is built from. Card bodies are
+    /// already fed `item.preview` (capped to `displayPreviewCap`), but `HighlightedText` is also used
+    /// for link titles/hosts and could be reused, so cap here too. `prefix(_:)` is O(cap) regardless
+    /// of the source length, so building the attributed copy can never scan a multi-MB string.
+    private static let highlightDefensiveCap = 8_000
+
     private var attributedText: AttributedString {
-        var attributed = AttributedString(text)
+        let capped = String(text.prefix(Self.highlightDefensiveCap))
+        var attributed = AttributedString(capped)
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !needle.isEmpty else { return attributed }
 
-        let lowerText = text.lowercased()
+        let lowerText = capped.lowercased()
         let lowerNeedle = needle.lowercased()
         var searchRange = lowerText.startIndex..<lowerText.endIndex
 
