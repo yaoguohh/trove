@@ -34,6 +34,18 @@ final class ClipboardStore: ObservableObject {
     private var isLoading = false
     private var saveGeneration = 0
 
+    /// Cards removed by an explicit user delete, oldest-first; ⌘Z (`undoDelete`) pops the newest back.
+    /// In-memory and session-scoped (NOT persisted) — undo recovers an accidental delete within the
+    /// session, nothing more. Bounded by `maxUndoDepth` so a long deleting spree can't pin unbounded
+    /// memory. `delete` DEFERS removing a clip's sidecar/image files to here: they're removed only when
+    /// the clip is evicted past the cap (so until then an undo can restore it byte-for-byte); the
+    /// launch-time reconcile is the orphan backstop for anything an abrupt quit strands.
+    private var deletedUndoStack: [ClipboardItem] = []
+    private let maxUndoDepth = 25
+
+    /// Whether there's a deleted card to restore — drives the panel's ⌘Z gating.
+    var canUndoDelete: Bool { !deletedUndoStack.isEmpty }
+
     /// `storeURL` is injectable so tests can run against a temp file without
     /// touching the user's real Application Support directory.
     init(storeURL: URL? = nil) {
@@ -208,9 +220,63 @@ final class ClipboardStore: ObservableObject {
     }
 
     func delete(_ item: ClipboardItem) {
-        items.removeAll { $0.id == item.id }
-        Self.removeImageFile(for: item)
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        // Capture the store's canonical copy and push it to the undo stack. Its sidecar/image files are
+        // intentionally NOT removed here — `pushUndo` removes them only on eviction, so ⌘Z can restore
+        // the clip with full fidelity until then.
+        let removed = items.remove(at: index)
+        pushUndo(removed)
         scheduleSave()
+    }
+
+    /// Push a just-deleted clip onto the bounded undo stack, removing the files of anything evicted
+    /// past the cap (the removal `delete` deferred). Eviction is the point of no return for a delete.
+    private func pushUndo(_ item: ClipboardItem) {
+        deletedUndoStack.append(item)
+        while deletedUndoStack.count > maxUndoDepth {
+            let evicted = deletedUndoStack.removeFirst()
+            Self.removeImageFile(for: evicted)
+            Self.removeTextFile(for: evicted)
+        }
+    }
+
+    /// Restore the most recently deleted clip (⌘Z), returning it so the caller can re-select the card.
+    /// The clip re-enters at its original time-sorted slot (it kept its `createdAt` — an honest copy
+    /// timestamp, never rewritten); its files were never removed by `delete`, so fidelity is intact.
+    /// Returns nil when there's nothing to undo.
+    ///
+    /// Deliberately does NOT `trim()`: a `delete` already freed a slot, so a restore returns the history
+    /// to at most its cap — it never overflows here. Known limitation: at a FULL history, undoing the
+    /// OLDEST clip puts it back at the bottom, where the next `add` ages it out by normal LRU (its files
+    /// are then removed cleanly). Pin a recovered clip to keep it; rewriting `createdAt` to dodge this
+    /// would lie about when the clip was copied, which the card's relative-time display relies on.
+    @discardableResult
+    func undoDelete() -> ClipboardItem? {
+        guard var item = deletedUndoStack.popLast() else { return nil }
+
+        // The clip carried its pin state onto the stack; if its pinboard was deleted while it sat there,
+        // restore it loose rather than dangling-pinned (a card referencing a gone board is invisible to
+        // every live pinboard filter). Validating on restore covers ANY structural mutation, not just
+        // deletePinboard.
+        if let boardID = item.pinboardID, !pinboards.contains(where: { $0.id == boardID }) {
+            item.pinboardID = nil
+            item.isPinned = false
+        }
+
+        // If the content is already live (the user re-copied it after deleting), don't create a
+        // duplicate. Discard the stale undo entry and its now-redundant sidecar/image files, surfacing
+        // the existing card instead — the same single-card-per-content guarantee `add` makes.
+        let normalized = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let existingIndex = dedupIndex(hash: item.fullTextHash, normalizedText: normalized) {
+            Self.removeImageFile(for: item)
+            Self.removeTextFile(for: item)
+            return items[existingIndex]
+        }
+
+        items.append(item)
+        sortForPins()
+        scheduleSave()
+        return item
     }
 
     func move(_ item: ClipboardItem, to pinboard: Pinboard?) {

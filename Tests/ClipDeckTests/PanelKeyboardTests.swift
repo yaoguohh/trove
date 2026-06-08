@@ -9,12 +9,18 @@ private func decide(
     _ modifiers: EventModifiers = [],
     queryEmpty: Bool = true,
     hasSelection: Bool = true,
-    quickLook: Bool = false
+    quickLook: Bool = false,
+    canUndo: Bool = false
 ) -> PanelKeyIntent {
     PanelKeyboard.intent(
         key: key,
         modifiers: modifiers,
-        state: PanelInputState(queryIsEmpty: queryEmpty, hasSelection: hasSelection, quickLookVisible: quickLook)
+        state: PanelInputState(
+            queryIsEmpty: queryEmpty,
+            hasSelection: hasSelection,
+            quickLookVisible: quickLook,
+            canUndoDelete: canUndo
+        )
     )
 }
 
@@ -85,6 +91,29 @@ struct PanelKeyboardSpaceTests {
     }
     @Test func spaceTypesWhenNothingSelected() {
         #expect(decide(.space, hasSelection: false) == .passThrough)
+    }
+}
+
+struct PanelKeyboardUndoTests {
+    @Test func commandZUndoesWhenSomethingToUndo() {
+        #expect(decide("z", [.command], canUndo: true) == .undoDelete)
+        #expect(decide("Z", [.command], canUndo: true) == .undoDelete) // caps-lock variant
+    }
+    @Test func commandZWhileTypingSearchDoesTextUndoNotCardUndo() {
+        // Non-empty query ⇒ the user is editing search text; ⌘Z must reach the field's native text
+        // undo, never resurrect a card — even when a deleted card is available.
+        #expect(decide("z", [.command], queryEmpty: false, canUndo: true) == .passThrough)
+    }
+    @Test func commandZPassesThroughWhenNothingToUndo() {
+        // No card-deletes to undo → ⌘Z falls through to the search field's own text undo.
+        #expect(decide("z", [.command], canUndo: false) == .passThrough)
+    }
+    @Test func shiftCommandZIsNotUndo() {
+        // ⇧⌘Z (redo) is intentionally unsupported — it must never be read as undo.
+        #expect(decide("z", [.command, .shift], canUndo: true) == .passThrough)
+    }
+    @Test func plainZTypesIntoTheQuery() {
+        #expect(decide("z", canUndo: true) == .passThrough)
     }
 }
 

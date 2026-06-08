@@ -21,6 +21,7 @@ enum PanelKeyIntent: Equatable {
     case pageSelection(Int)    // ⌘←/⌘→ : direction (-1/+1); executor scales by the page size
     case paste(plainText: Bool)
     case deleteSelectedCard    // ⌦ or ⌘⌫
+    case undoDelete            // ⌘Z : restore the most recently deleted card
     case toggleQuickLook       // Space over a selected card with an empty search
     case dismissQuickLook      // Esc while the peek bubble is open
     case clearQuery            // Esc with a non-empty search
@@ -33,6 +34,10 @@ struct PanelInputState: Equatable {
     var queryIsEmpty: Bool
     var hasSelection: Bool
     var quickLookVisible: Bool
+    /// Whether the store has a deleted card to restore. Card-undo fires on ⌘Z only when this is true
+    /// AND `queryIsEmpty` — so while the user is editing search text, ⌘Z passes through to the field's
+    /// native text-undo instead of resurrecting a card.
+    var canUndoDelete: Bool
 }
 
 enum PanelKeyboard {
@@ -53,12 +58,17 @@ enum PanelKeyboard {
             return mods.isEmpty ? .paste(plainText: false) : .passThrough
         }
 
-        // ⌘←/⌘→ page the selection; ⌘⌫ deletes the card.
+        // ⌘←/⌘→ page the selection; ⌘⌫ deletes the card; ⌘Z restores the last delete. ⇧⌘Z (redo) has
+        // a non-`.command` mods set, so it never reaches here — it passes through below. The "z"/"Z"
+        // pair covers a caps-lock-on keystroke (caps lock isn't tracked in `mods`). Card-undo requires
+        // an EMPTY query: while the user is editing search text, ⌘Z must reach the field's native
+        // text-undo, so it only resurrects a card in the browse (empty-search) state.
         if mods == .command {
             switch key {
             case .leftArrow: return .pageSelection(-1)
             case .rightArrow: return .pageSelection(1)
             case .delete: return .deleteSelectedCard
+            case "z", "Z": return (state.queryIsEmpty && state.canUndoDelete) ? .undoDelete : .passThrough
             default: return .passThrough
             }
         }
