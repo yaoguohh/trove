@@ -330,10 +330,16 @@ final class ClipboardPanelController {
         return max(1, Int((panel.frame.width - chrome) / unit))
     }
 
-    /// Open a standalone, content-adaptive preview window for the item. The panel stays open
-    /// (floating beneath the preview) so the user can keep comparing items.
+    /// Expand the item. A single bare URL opens in the default browser (a native card just duplicates
+    /// the browser); everything else opens a standalone, content-adaptive inspect window. The panel
+    /// stays open (floating beneath the preview) so the user can keep comparing items.
     private func showPreview(_ item: ClipboardItem) {
-        previewController.show(item, near: panel?.screen)
+        switch RichPreviewRenderer.expandAction(for: item.text, kind: item.kind) {
+        case .openURL(let url):
+            NSWorkspace.shared.open(url)
+        case .inspectWindow:
+            previewController.show(item, near: panel?.screen)
+        }
     }
 }
 
