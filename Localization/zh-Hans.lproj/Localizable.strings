@@ -40,6 +40,16 @@
 "Delete Pinboard" = "删除收藏板";
 "Image unavailable" = "图片不可用";
 
+/* Large content */
+"Preview shortened for performance; copy or paste delivers the full content." = "预览已为性能缩短；复制或粘贴仍为完整内容。";
+"Truncated" = "已截断";
+"This clip was too large and was shortened; pasting will not include the full content." = "此内容过大已被截断，粘贴时将不包含完整内容。";
+
+/* Rich preview */
+"Open Link" = "打开链接";
+"Formatted" = "格式化";
+"Raw Text" = "原始文本";
+
 /* Rename */
 "Rename" = "重命名";
 
