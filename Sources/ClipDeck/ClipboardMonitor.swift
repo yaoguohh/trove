@@ -30,8 +30,12 @@ final class ClipboardMonitor {
             lastImageDataWrittenByApp = data
             pasteboard.writeObjects([image])
         } else {
-            lastTextWrittenByApp = item.text
-            pasteboard.setString(item.text, forType: .string)
+            // The FULL text (sidecar-backed for big clips). Both the pasteboard write AND the
+            // echo-suppression record must use the same full string, or poll() would see the written
+            // content as "new" (the inline prefix != full) and re-ingest the clip on every select.
+            let full = item.fullText
+            lastTextWrittenByApp = full
+            pasteboard.setString(full, forType: .string)
         }
     }
 

@@ -105,11 +105,13 @@ final class PasteExecutor {
         await bringTargetToFront(target)
 
         if item.kind != .image {
+            // Full text (sidecar-backed for big clips), read once.
+            let full = item.fullText
             if let element = target.resolvedFocusedElement() {
                 // Prefer replacing the current selection (AXSelectedText) over rewriting
                 // the entire field value (AXValue), which is heavier and can clobber rich
                 // formatting in capable text controls.
-                let selectedTextResult = insertViaSelectedText(item.text, into: element)
+                let selectedTextResult = insertViaSelectedText(full, into: element)
                 if selectedTextResult == .success {
                     return PasteExecutionResult(
                         strategy: .accessibilitySelectedText,
@@ -118,7 +120,7 @@ final class PasteExecutor {
                     )
                 }
 
-                let valueRangeResult = insertViaValueRange(item.text, into: element)
+                let valueRangeResult = insertViaValueRange(full, into: element)
                 if valueRangeResult == .success {
                     return PasteExecutionResult(
                         strategy: .accessibilityValueRange,

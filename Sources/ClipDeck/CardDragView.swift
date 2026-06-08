@@ -125,10 +125,12 @@ final class CardDragView: NSView, NSDraggingSource {
            let image = ImageCache.image(at: url) {
             return image
         }
-        if item.kind == .link, let url = URL(string: item.text) {
+        // Full text (sidecar-backed for big clips) so a dragged-out clip carries its complete content.
+        let full = item.fullText
+        if item.kind == .link, let url = URL(string: full) {
             return url as NSURL
         }
-        return item.text as NSString
+        return full as NSString
     }
 
     private func previewImage(for item: ClipboardItem, size: CGSize) -> NSImage {

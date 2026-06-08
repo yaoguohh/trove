@@ -53,6 +53,7 @@ struct ClipCard: View {
                     createdAt: item.createdAt,
                     pinboard: pinboard,
                     characterCount: item.characterCount,
+                    isTruncated: item.isTruncated,
                     index: index,
                     metrics: metrics
                 )
@@ -261,6 +262,7 @@ private struct ClipCardFooter: View {
     let createdAt: Date
     let pinboard: Pinboard?
     let characterCount: Int
+    let isTruncated: Bool
     let index: Int
     let metrics: CardMetrics
 
@@ -274,6 +276,12 @@ private struct ClipCardFooter: View {
             if let pinboard {
                 Text(pinboard.name)
                     .footerChip(background: colorScheme == .dark ? .white.opacity(0.10) : .black.opacity(0.07), metrics: metrics)
+            }
+            if isTruncated {
+                // Only the rare ceiling-hit clip: honest signal that paste won't include the tail.
+                Text("Truncated")
+                    .footerChip(background: colorScheme == .dark ? .orange.opacity(0.22) : .orange.opacity(0.16), metrics: metrics)
+                    .help(String(localized: "This clip was too large and was shortened; pasting will not include the full content."))
             }
             Spacer()
             Text("\(characterCount) characters")
