@@ -23,7 +23,8 @@ final class SettingsPanelController {
     private func createWindow() {
         let view = SettingsView(shortcutStore: shortcutStore)
         let hosting = NSHostingController(rootView: view)
-        let window = NSWindow(
+        // StandaloneWindow so Esc / ⌘W close it — the menu-bar app has no File menu to supply ⌘W.
+        let window = StandaloneWindow(
             contentRect: NSRect(x: 0, y: 0, width: 500, height: 460),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,

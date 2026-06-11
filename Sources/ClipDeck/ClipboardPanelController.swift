@@ -363,6 +363,13 @@ final class ClipboardPanelController {
 private final class ClipDeckPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+
+    // No main-menu Edit menu (menu-bar app), so route ⌘C/⌘X/⌘V/⌘A into the search field here. Only a
+    // bare ⌘+letter is taken, so ⌘←/⌘→/⌘⌫/⌘Z still reach `handleKey`'s keyboard model. See
+    // `EditingShortcuts`.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        EditingShortcuts.route(event) || super.performKeyEquivalent(with: event)
+    }
 }
 
 /// An NSVisualEffectView that picks the densest text-hiding material for its current appearance

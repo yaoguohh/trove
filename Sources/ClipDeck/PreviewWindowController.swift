@@ -148,11 +148,13 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
     }
 }
 
-/// Esc closes the preview (the standard cancel action). The panel's key monitor bails when the
-/// panel isn't key, so Esc reaches this window's responder chain instead of dismissing the panel.
-private final class PreviewWindow: NSWindow {
-    override func cancelOperation(_ sender: Any?) {
-        close()
+/// The inspect window. Esc and ⌘W close it (via `StandaloneWindow`); ⌘C/⌘A route into the selectable
+/// text (via `EditingShortcuts`) — the menu-bar app has no Edit/File menu to supply either. The panel's
+/// key monitor bails when the panel isn't key, so Esc reaches this window instead of dismissing the panel.
+private final class PreviewWindow: StandaloneWindow {
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        // Editing shortcuts (⌘C/⌘A) first; ⌘W and anything else fall through to StandaloneWindow.
+        EditingShortcuts.route(event) || super.performKeyEquivalent(with: event)
     }
 }
 
