@@ -1,4 +1,4 @@
-# Release pipeline for ClipDeck (free path: ad-hoc signed, not notarized, Sparkle auto-updates).
+# Release pipeline for Trove (free path: ad-hoc signed, not notarized, Sparkle auto-updates).
 #
 # Trigger: push a tag like `v0.2.0`.
 #
@@ -36,28 +36,28 @@ jobs:
 
       - name: Package signed .app (ad-hoc + Sparkle embedded)
         env:
-          CLIPDECK_SU_PUBLIC_KEY: ${{ secrets.SU_PUBLIC_KEY }}
-          CLIPDECK_SU_FEED_URL: "https://github.com/${{ github.repository }}/releases/latest/download/appcast.xml"
+          TROVE_SU_PUBLIC_KEY: ${{ secrets.SU_PUBLIC_KEY }}
+          TROVE_SU_FEED_URL: "https://github.com/${{ github.repository }}/releases/latest/download/appcast.xml"
         run: |
           # Drive the version from the tag (v0.2.0 → 0.2.0); run_number is the monotonic build.
-          export CLIPDECK_MARKETING_VERSION="${GITHUB_REF_NAME#v}"
-          export CLIPDECK_BUILD_VERSION="${{ github.run_number }}"
+          export TROVE_MARKETING_VERSION="${GITHUB_REF_NAME#v}"
+          export TROVE_BUILD_VERSION="${{ github.run_number }}"
           bash scripts/package-app.sh
 
       - name: Verify signature
-        run: codesign --verify --deep --strict --verbose=2 .build/ClipDeck.app
+        run: codesign --verify --deep --strict --verbose=2 .build/Trove.app
 
       - name: Build .dmg
         run: |
           mkdir -p dist
           STAGE="$(mktemp -d)"
-          cp -R .build/ClipDeck.app "$STAGE/"
+          cp -R .build/Trove.app "$STAGE/"
           ln -s /Applications "$STAGE/Applications"   # drag-to-install; Sparkle ignores the symlink
           hdiutil create \
-            -volname "ClipDeck" \
+            -volname "Trove" \
             -srcfolder "$STAGE" \
             -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov \
-            "dist/ClipDeck.dmg"
+            "dist/Trove.dmg"
           rm -rf "$STAGE"
 
       - name: Fetch Sparkle CLI tools
@@ -83,7 +83,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/ClipDeck.dmg
+            dist/Trove.dmg
             dist/appcast.xml
           generate_release_notes: true
       # SUFeedURL points at releases/latest/download/appcast.xml, so uploading appcast.xml as a

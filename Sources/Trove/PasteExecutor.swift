@@ -85,7 +85,7 @@ final class PasteExecutor {
 
         guard let target, target.isFresh else {
             // Fallback (no fresh AX target). The panel was ordered out before paste, but
-            // ClipDeck can still be the active app, so a blind Cmd+V would land on nothing.
+            // Trove can still be the active app, so a blind Cmd+V would land on nothing.
             // Hand focus off first — symmetric with the success path's bringTargetToFront.
             if let target {
                 await bringTargetToFront(target)
@@ -129,9 +129,9 @@ final class PasteExecutor {
                     )
                 }
 
-                debugLog("ClipDeck AX paste failed for \(target.localizedName): selectedText=\(selectedTextResult.rawValue), valueRange=\(valueRangeResult.rawValue)")
+                debugLog("Trove AX paste failed for \(target.localizedName): selectedText=\(selectedTextResult.rawValue), valueRange=\(valueRangeResult.rawValue)")
             } else {
-                debugLog("ClipDeck AX paste skipped for \(target.localizedName): no focused element")
+                debugLog("Trove AX paste skipped for \(target.localizedName): no focused element")
             }
         }
 

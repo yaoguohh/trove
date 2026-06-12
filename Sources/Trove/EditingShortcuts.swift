@@ -1,10 +1,10 @@
 import AppKit
 
-/// Standard editing-shortcut routing for ClipDeck's windows.
+/// Standard editing-shortcut routing for Trove's windows.
 ///
 /// In a normal Mac app ⌘C/⌘X/⌘V/⌘A work because the **main-menu Edit menu** carries those key
 /// equivalents and AppKit routes the matching action (`copy:`, `paste:`, …) to the key window's first
-/// responder. ClipDeck deliberately has **no main menu** — it's a menu-bar app, and a menu bar would
+/// responder. Trove deliberately has **no main menu** — it's a menu-bar app, and a menu bar would
 /// pop up over the spotlight-style panel whenever it's summoned. Without that menu there's no built-in
 /// routing for these shortcuts, so each window forwards them to the responder chain itself via
 /// `performKeyEquivalent`. This is the standard escape hatch for menu-bar-only apps, kept in ONE place

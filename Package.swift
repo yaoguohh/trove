@@ -3,12 +3,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "ClipDeck",
+    name: "Trove",
     platforms: [
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "ClipDeck", targets: ["ClipDeck"])
+        .executable(name: "Trove", targets: ["Trove"])
     ],
     dependencies: [
         // Sparkle: in-app auto-updates. Works on the free (ad-hoc, un-notarized) path via its own
@@ -18,20 +18,20 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "ClipDeck",
+            name: "Trove",
             dependencies: [
                 .product(name: "Sparkle", package: "Sparkle")
             ],
-            path: "Sources/ClipDeck",
+            path: "Sources/Trove",
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("Carbon")
             ]
         ),
         .testTarget(
-            name: "ClipDeckTests",
-            dependencies: ["ClipDeck"],
-            path: "Tests/ClipDeckTests"
+            name: "TroveTests",
+            dependencies: ["Trove"],
+            path: "Tests/TroveTests"
         )
     ]
 )

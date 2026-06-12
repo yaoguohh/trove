@@ -46,7 +46,7 @@ final class ClipboardMonitor {
         Task { @MainActor in
             let result = await PasteExecutor.shared.paste(item: item, target: targetSnapshot)
             #if DEBUG
-            NSLog("ClipDeck paste result: %@, success=%d", result.strategy.rawValue, result.success ? 1 : 0)
+            NSLog("Trove paste result: %@, success=%d", result.strategy.rawValue, result.success ? 1 : 0)
             #endif
             clearPasteTarget()
         }

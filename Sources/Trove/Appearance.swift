@@ -29,7 +29,7 @@ enum AppAppearance: Int, CaseIterable, Identifiable {
 
 @MainActor
 enum AppearanceManager {
-    private static let defaultsKey = "ClipDeck.appearance"
+    private static let defaultsKey = "Trove.appearance"
 
     static var current: AppAppearance {
         get { AppAppearance(rawValue: UserDefaults.standard.integer(forKey: defaultsKey)) ?? .system }

@@ -168,7 +168,7 @@ final class ClipboardStore: ObservableObject {
             item.textFileName = fileName
             item.text = String(storedText.prefix(ClipboardItem.inlineTextCap))
         } catch {
-            NSLog("ClipDeck text sidecar save failed: \(error.localizedDescription)")
+            NSLog("Trove text sidecar save failed: \(error.localizedDescription)")
             // Fall back to full inline so paste fidelity is never silently lost; still allow dedup.
             item.fullTextHash = hash
         }
@@ -190,7 +190,7 @@ final class ClipboardStore: ObservableObject {
             )
             try data.write(to: ClipboardItem.imageDirectoryURL.appendingPathComponent(fileName), options: .atomic)
         } catch {
-            NSLog("ClipDeck image save failed: \(error.localizedDescription)")
+            NSLog("Trove image save failed: \(error.localizedDescription)")
             return
         }
 
@@ -429,7 +429,7 @@ final class ClipboardStore: ObservableObject {
             let data = try encoder.encode(document)
             try data.write(to: url, options: .atomic)
         } catch {
-            NSLog("ClipDeck store save failed: \(error.localizedDescription)")
+            NSLog("Trove store save failed: \(error.localizedDescription)")
         }
     }
 
@@ -465,9 +465,9 @@ final class ClipboardStore: ObservableObject {
             .appendingPathComponent("history.corrupt-\(suffix).json")
         do {
             try data.write(to: backupURL, options: .atomic)
-            NSLog("ClipDeck: history could not be decoded; preserved a backup at \(backupURL.lastPathComponent)")
+            NSLog("Trove: history could not be decoded; preserved a backup at \(backupURL.lastPathComponent)")
         } catch {
-            NSLog("ClipDeck: history could not be decoded and backup failed: \(error.localizedDescription)")
+            NSLog("Trove: history could not be decoded and backup failed: \(error.localizedDescription)")
         }
     }
 

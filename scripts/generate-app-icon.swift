@@ -3,11 +3,11 @@
 import AppKit
 import Foundation
 
-let outputURL = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "ClipDeck.icns")
+let outputURL = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "Trove.icns")
 let fileManager = FileManager.default
 let workURL = URL(fileURLWithPath: NSTemporaryDirectory())
-    .appendingPathComponent("ClipDeck.iconset-\(UUID().uuidString)", isDirectory: true)
-let iconsetURL = workURL.appendingPathComponent("ClipDeck.iconset", isDirectory: true)
+    .appendingPathComponent("Trove.iconset-\(UUID().uuidString)", isDirectory: true)
+let iconsetURL = workURL.appendingPathComponent("Trove.iconset", isDirectory: true)
 
 try fileManager.createDirectory(at: iconsetURL, withIntermediateDirectories: true)
 

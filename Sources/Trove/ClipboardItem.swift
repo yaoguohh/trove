@@ -142,7 +142,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
         let key = url.path as NSString
         if let cached = Self.fullTextCache.object(forKey: key) { return cached as String }
         guard let loaded = try? String(contentsOf: url, encoding: .utf8) else {
-            NSLog("ClipDeck: full-text sidecar unreadable (\(url.lastPathComponent)); pasting the inline prefix only")
+            NSLog("Trove: full-text sidecar unreadable (\(url.lastPathComponent)); pasting the inline prefix only")
             // Memoize the fallback so a degraded clip doesn't re-stat + re-log on every paste/drag.
             Self.fullTextCache.setObject(text as NSString, forKey: key, cost: text.utf8.count)
             return text

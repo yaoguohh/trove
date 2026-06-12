@@ -44,7 +44,7 @@ final class ClipboardPanelController {
             createPanel()
         }
         guard let panel else { return }
-        // Activate ClipDeck so the panel is a fully-interactive key window of the active
+        // Activate Trove so the panel is a fully-interactive key window of the active
         // app. A non-activating panel of a background app intermittently swallows the
         // first click/drag/key on its content; the paste target was already snapshotted
         // before showing and is re-activated on paste, so this doesn't affect pasting.
@@ -107,7 +107,7 @@ final class ClipboardPanelController {
         )
         let hosting = ClickThroughHostingController(rootView: root)
         hostingController = hosting
-        let panel = ClipDeckPanel(
+        let panel = TrovePanel(
             contentRect: NSRect(x: 0, y: 0, width: 1180, height: 450),
             styleMask: [.borderless],
             backing: .buffered,
@@ -178,9 +178,9 @@ final class ClipboardPanelController {
         panel.contentView = containerView
         self.panel = panel
 
-        // Spotlight-style auto-dismiss: collapse the panel the moment ClipDeck stops being the
+        // Spotlight-style auto-dismiss: collapse the panel the moment Trove stops being the
         // active app (the user clicked another app or the desktop). didResignActive fires ONLY on
-        // a true app deactivation — moving focus to our OWN preview/settings window keeps ClipDeck
+        // a true app deactivation — moving focus to our OWN preview/settings window keeps Trove
         // active, so the panel correctly stays open beneath them for side-by-side comparison.
         // Because the panel can no longer linger while another app is focused, the old *global* Esc
         // monitor became unreachable and was removed; the local key monitor's Esc (fires only while
@@ -360,7 +360,7 @@ final class ClipboardPanelController {
 
 /// A borderless panel that can still become key so the hosted SwiftUI search field can focus and
 /// receive keyboard input; navigation/action keys are intercepted by the field's `.onKeyPress`.
-private final class ClipDeckPanel: NSPanel {
+private final class TrovePanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
 

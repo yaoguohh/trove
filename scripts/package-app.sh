@@ -2,28 +2,28 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-APP_DIR="$ROOT_DIR/.build/ClipDeck.app"
+APP_DIR="$ROOT_DIR/.build/Trove.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
-ICON_FILE="$RESOURCES_DIR/ClipDeck.icns"
+ICON_FILE="$RESOURCES_DIR/Trove.icns"
 FRAMEWORKS_DIR="$CONTENTS_DIR/Frameworks"
-SIGN_IDENTITY="${CLIPDECK_CODESIGN_IDENTITY:-}"
+SIGN_IDENTITY="${TROVE_CODESIGN_IDENTITY:-}"
 # Sparkle auto-update config — filled per release. Dev packaging can leave the key empty
 # (the build still runs; updates just aren't EdDSA-verifiable until a key is set).
-SU_FEED_URL="${CLIPDECK_SU_FEED_URL:-https://github.com/yaoguohh/clipdeck/releases/latest/download/appcast.xml}"
-SU_PUBLIC_KEY="${CLIPDECK_SU_PUBLIC_KEY:-}"
+SU_FEED_URL="${TROVE_SU_FEED_URL:-https://github.com/yaoguohh/trove/releases/latest/download/appcast.xml}"
+SU_PUBLIC_KEY="${TROVE_SU_PUBLIC_KEY:-}"
 # Version: marketing string + monotonic build number. Sparkle compares CFBundleVersion to decide
 # "update available", so a release MUST bump BUILD_VERSION (CI passes the tag / run number).
-MARKETING_VERSION="${CLIPDECK_MARKETING_VERSION:-0.1.0}"
-BUILD_VERSION="${CLIPDECK_BUILD_VERSION:-1}"
+MARKETING_VERSION="${TROVE_MARKETING_VERSION:-0.1.0}"
+BUILD_VERSION="${TROVE_BUILD_VERSION:-1}"
 
 cd "$ROOT_DIR"
 swift build -c release
 
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR" "$FRAMEWORKS_DIR"
-cp "$ROOT_DIR/.build/release/ClipDeck" "$MACOS_DIR/ClipDeck"
+cp "$ROOT_DIR/.build/release/Trove" "$MACOS_DIR/Trove"
 
 # Embed Sparkle.framework. SwiftPM links it but does NOT place the runtime helpers
 # (Autoupdate / Updater.app / XPC services) into the .app, so copy the framework in and add the
@@ -32,7 +32,7 @@ SPARKLE_FRAMEWORK="$(find "$ROOT_DIR/.build/artifacts" -path '*macos-arm64*/Spar
 [ -z "$SPARKLE_FRAMEWORK" ] && SPARKLE_FRAMEWORK="$ROOT_DIR/.build/release/Sparkle.framework"
 if [ -d "$SPARKLE_FRAMEWORK" ]; then
   cp -R "$SPARKLE_FRAMEWORK" "$FRAMEWORKS_DIR/"
-  install_name_tool -add_rpath "@executable_path/../Frameworks" "$MACOS_DIR/ClipDeck" 2>/dev/null || true
+  install_name_tool -add_rpath "@executable_path/../Frameworks" "$MACOS_DIR/Trove" 2>/dev/null || true
 else
   echo "warning: Sparkle.framework not found in .build; auto-update will be unavailable in this build." >&2
 fi
@@ -58,15 +58,15 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
     <string>zh-Hans</string>
   </array>
   <key>CFBundleExecutable</key>
-  <string>ClipDeck</string>
+  <string>Trove</string>
   <key>CFBundleIdentifier</key>
-  <string>dev.local.clipdeck</string>
+  <string>io.github.yaoguohh.trove</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
-  <string>ClipDeck</string>
+  <string>Trove</string>
   <key>CFBundleIconFile</key>
-  <string>ClipDeck</string>
+  <string>Trove</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
@@ -76,7 +76,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
   <key>NSHumanReadableCopyright</key>
-  <string>Copyright © 2026 ClipDeck</string>
+  <string>Copyright © 2026 Trove</string>
 </dict>
 </plist>
 PLIST
@@ -91,7 +91,7 @@ PLB=/usr/libexec/PlistBuddy
 if [[ -n "$SU_PUBLIC_KEY" ]]; then
   "$PLB" -c "Add :SUPublicEDKey string $SU_PUBLIC_KEY" "$CONTENTS_DIR/Info.plist"
 else
-  echo "warning: CLIPDECK_SU_PUBLIC_KEY unset — SUPublicEDKey omitted. Run Sparkle's generate_keys and export it for release builds, or updates can't be EdDSA-verified." >&2
+  echo "warning: TROVE_SU_PUBLIC_KEY unset — SUPublicEDKey omitted. Run Sparkle's generate_keys and export it for release builds, or updates can't be EdDSA-verified." >&2
 fi
 
 # Resolve signing identity: Developer ID if available, else ad-hoc.
@@ -103,11 +103,11 @@ if [[ -z "$SIGN_IDENTITY" ]]; then
 fi
 if [[ -n "$SIGN_IDENTITY" ]]; then
   SIGN_ID="$SIGN_IDENTITY"
-  echo "Signing ClipDeck with identity: $SIGN_ID" >&2
+  echo "Signing Trove with identity: $SIGN_ID" >&2
 else
   SIGN_ID="-"
   echo "warning: no code signing identity found; using ad-hoc signing." >&2
-  echo "warning: set CLIPDECK_CODESIGN_IDENTITY to a real certificate before notarized distribution." >&2
+  echo "warning: set TROVE_CODESIGN_IDENTITY to a real certificate before notarized distribution." >&2
 fi
 
 # Sparkle adds nested code (framework + Updater.app + Autoupdate + XPC services). Sign it
@@ -129,7 +129,7 @@ fi
 # No `--deep`: the nested Sparkle code is already signed above.
 if [[ "$SIGN_ID" == "-" ]]; then
   codesign --force --sign - \
-    --requirements '=designated => identifier "dev.local.clipdeck"' \
+    --requirements '=designated => identifier "io.github.yaoguohh.trove"' \
     "$APP_DIR" >/dev/null
 else
   codesign --force --sign "$SIGN_ID" "$APP_DIR" >/dev/null

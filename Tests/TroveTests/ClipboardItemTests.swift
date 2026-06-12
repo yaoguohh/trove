@@ -1,5 +1,5 @@
 import Testing
-@testable import ClipDeck
+@testable import Trove
 
 struct ClipboardKindDetectionTests {
     @Test func detectsLinks() {

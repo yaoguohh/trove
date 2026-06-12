@@ -1,11 +1,11 @@
 import Foundation
 import Testing
-@testable import ClipDeck
+@testable import Trove
 
 @MainActor
 private func makeTempStore() -> (ClipboardStore, URL) {
     let dir = FileManager.default.temporaryDirectory
-        .appendingPathComponent("ClipDeckTests-\(UUID().uuidString)", isDirectory: true)
+        .appendingPathComponent("TroveTests-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let url = dir.appendingPathComponent("history.json")
     return (ClipboardStore(storeURL: url), url)
@@ -194,7 +194,7 @@ struct ClipboardStorePinboardReorderTests {
 struct ClipboardStoreLoadTests {
     @Test func corruptFileIsBackedUpNotSilentlyWiped() throws {
         let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ClipDeckTests-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("TroveTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let url = dir.appendingPathComponent("history.json")
         let corruptBytes = Data("this is not valid json".utf8)
@@ -329,7 +329,7 @@ struct ClipboardItemImageTests {
 struct ClipboardItemMigrationTests {
     @Test func legacyJSONDecodesWithoutNewKeys() throws {
         let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ClipDeckTests-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("TroveTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let url = dir.appendingPathComponent("history.json")
         // A pre-sidecar document: items carry NONE of textFileName/fullTextHash/isTruncated/

@@ -30,7 +30,7 @@ final class SettingsPanelController {
             backing: .buffered,
             defer: false
         )
-        window.title = String(localized: "ClipDeck Preferences")
+        window.title = String(localized: "Trove Preferences")
         window.isReleasedWhenClosed = false
         window.contentViewController = hosting
         self.window = window
@@ -57,7 +57,7 @@ private struct SettingsView: View {
             } header: {
                 Text("Appearance")
             } footer: {
-                Text("Choose how ClipDeck looks. Follow System matches your macOS setting.")
+                Text("Choose how Trove looks. Follow System matches your macOS setting.")
             }
 
             Section {
@@ -66,7 +66,7 @@ private struct SettingsView: View {
             } header: {
                 Text("Keyboard Shortcut")
             } footer: {
-                Text("Choose the global shortcut used to show or hide ClipDeck. Press a combination with at least one modifier key.")
+                Text("Choose the global shortcut used to show or hide Trove. Press a combination with at least one modifier key.")
             }
         }
         .formStyle(.grouped)
