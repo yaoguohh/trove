@@ -71,7 +71,7 @@ final class ShortcutStore: ObservableObject {
 
     var onChange: ((HotKeyShortcut) -> Void)?
 
-    private let defaultsKey = "ClipDeck.showPanelShortcut"
+    private let defaultsKey = "Trove.showPanelShortcut"
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
@@ -169,7 +169,7 @@ final class HotKeyManager: @unchecked Sendable {
         if status == noErr, let ref {
             hotKeyRefs.append(ref)
         } else {
-            NSLog("ClipDeck failed to register hotkey \(id): \(status)")
+            NSLog("Trove failed to register hotkey \(id): \(status)")
         }
     }
 

@@ -1,6 +1,6 @@
 import SwiftUI
 import Testing
-@testable import ClipDeck
+@testable import Trove
 
 /// Deterministic, dependency-free regression guard for the Quick Look bubble outline — the shape we
 /// iterated on the most (seam, size, the Dock-style ogee tail). Asserts the *geometry* of the path

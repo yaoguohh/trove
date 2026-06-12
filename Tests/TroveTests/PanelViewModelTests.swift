@@ -1,11 +1,11 @@
 import Foundation
 import Testing
-@testable import ClipDeck
+@testable import Trove
 
 @MainActor
 private func makeModel(itemCount: Int) -> PanelViewModel {
     let dir = FileManager.default.temporaryDirectory
-        .appendingPathComponent("ClipDeckVMTests-\(UUID().uuidString)", isDirectory: true)
+        .appendingPathComponent("TroveVMTests-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let store = ClipboardStore(storeURL: dir.appendingPathComponent("history.json"))
     for i in 0..<itemCount {

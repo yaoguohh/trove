@@ -4,7 +4,7 @@ import Sparkle
 /// Wraps Sparkle's standard updater so the menu bar can offer "Check for Updates…" and run
 /// scheduled background checks. Sparkle verifies updates with its OWN EdDSA key (`SUPublicEDKey`
 /// in Info.plist + `sparkle:edSignature` in the appcast), independent of Apple notarization — so
-/// this works on ClipDeck's free, ad-hoc-signed distribution path. See memory:
+/// this works on Trove's free, ad-hoc-signed distribution path. See memory:
 /// distribution-and-update-strategy.
 ///
 /// Note: the update runtime (Sparkle.framework's embedded Autoupdate.app / XPC services) only

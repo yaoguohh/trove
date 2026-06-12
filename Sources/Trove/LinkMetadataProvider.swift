@@ -20,7 +20,7 @@ final class LinkMetadataProvider {
 
     private nonisolated static let maxHTMLBytes = 2_000_000
     private nonisolated static let maxIconBytes = 1_000_000
-    nonisolated static let autoFetchDefaultsKey = "ClipDeck.linkMetadataAutoFetch"
+    nonisolated static let autoFetchDefaultsKey = "Trove.linkMetadataAutoFetch"
 
     /// Whether link cards may reach out to the network to fetch title/favicon.
     /// Defaults to enabled, but users can turn it off to avoid leaking which URLs
@@ -102,7 +102,7 @@ final class LinkMetadataProvider {
             let data = try encoder.encode(metadata)
             try data.write(to: Self.cacheDirectoryURL.appendingPathComponent("\(key).json"), options: .atomic)
         } catch {
-            NSLog("ClipDeck failed to cache link metadata: \(error.localizedDescription)")
+            NSLog("Trove failed to cache link metadata: \(error.localizedDescription)")
         }
     }
 
@@ -211,7 +211,7 @@ final class LinkMetadataProvider {
         defer { session.finishTasksAndInvalidate() }
 
         var request = URLRequest(url: url, timeoutInterval: 7)
-        request.setValue("ClipDeck/0.1 LinkMetadata", forHTTPHeaderField: "User-Agent")
+        request.setValue("Trove/0.1 LinkMetadata", forHTTPHeaderField: "User-Agent")
         request.setValue(accept, forHTTPHeaderField: "Accept")
 
         let (bytes, response) = try await session.bytes(for: request)

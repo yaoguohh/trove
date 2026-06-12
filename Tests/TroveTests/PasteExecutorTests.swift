@@ -1,16 +1,16 @@
 import CoreFoundation
 import Testing
-@testable import ClipDeck
+@testable import Trove
 
 struct PasteExecutorTests {
     @Test func replacesCollapsedRangeAtCursor() {
         let result = PasteExecutor.replacingText(
             in: "Hello world",
             selectedRange: CFRange(location: 5, length: 0),
-            with: ", ClipDeck"
+            with: ", Trove"
         )
 
-        #expect(result == "Hello, ClipDeck world")
+        #expect(result == "Hello, Trove world")
     }
 
     @Test func replacesSelectedRange() {

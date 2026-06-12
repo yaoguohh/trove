@@ -1,6 +1,6 @@
 import SwiftUI
 import Testing
-@testable import ClipDeck
+@testable import Trove
 
 /// Pins the panel keyboard model (PanelKeyboard.intent) — the most regression-prone surface — as a
 /// pure decision table. The search field is always focused; these are the keys it intercepts.

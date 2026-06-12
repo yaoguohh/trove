@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import ClipDeck
+@testable import Trove
 
 struct RichPreviewURLTests {
     @Test func singleURLDetectedAsURL() {
