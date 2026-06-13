@@ -6,7 +6,6 @@ import SwiftUI
 final class ClipboardPanelController {
     private let store: ClipboardStore
     private let monitor: ClipboardMonitor
-    private let onOpenSettings: () -> Void
     private var panel: NSPanel?
     private var hostingController: NSHostingController<ClipboardPanelView>?
     // App-lifetime observer (the controller is held by AppDelegate for the whole run), so it never
@@ -28,10 +27,9 @@ final class ClipboardPanelController {
         panel?.isVisible == true
     }
 
-    init(store: ClipboardStore, monitor: ClipboardMonitor, onOpenSettings: @escaping () -> Void) {
+    init(store: ClipboardStore, monitor: ClipboardMonitor) {
         self.store = store
         self.monitor = monitor
-        self.onOpenSettings = onOpenSettings
         self.model = PanelViewModel(store: store)
         // The Space peek is one-shot: it shows the card selected at the moment Space was pressed.
         // ANY later selection change (←/→ navigation or hover) dismisses it instead of letting the
@@ -44,11 +42,14 @@ final class ClipboardPanelController {
             createPanel()
         }
         guard let panel else { return }
-        // Activate Trove so the panel is a fully-interactive key window of the active
-        // app. A non-activating panel of a background app intermittently swallows the
-        // first click/drag/key on its content; the paste target was already snapshotted
-        // before showing and is re-activated on paste, so this doesn't affect pasting.
-        NSApp.activate()
+        // Forcefully activate Trove so the panel becomes a fully-interactive KEY window. The no-arg
+        // `NSApp.activate()` (the cooperative macOS-14 path) will NOT steal activation from a frontmost
+        // app that owns the input focus — e.g. when you were typing in another app's text field — so
+        // the panel never becomes key and keystrokes keep going to that app (the focus bug). With
+        // `ignoringOtherApps: true` an accessory app summoned over another app reliably takes focus;
+        // `showStatusMenu()` already uses it for the status popover. The paste target was snapshotted
+        // before showing and is re-activated on paste, so stealing focus here doesn't affect pasting.
+        NSApp.activate(ignoringOtherApps: true)
         panel.alphaValue = 1
         position(panel)
         panel.makeKeyAndOrderFront(nil)
@@ -101,7 +102,6 @@ final class ClipboardPanelController {
             model: model,
             close: { [weak self] in self?.hide() },
             reopen: { [weak self] in self?.show() },
-            openSettings: { [weak self] in self?.onOpenSettings() },
             preview: { [weak self] item in self?.showPreview(item) },
             handleKey: { [weak self] key, modifiers in self?.handleKey(key, modifiers) ?? false }
         )
@@ -180,8 +180,8 @@ final class ClipboardPanelController {
 
         // Spotlight-style auto-dismiss: collapse the panel the moment Trove stops being the
         // active app (the user clicked another app or the desktop). didResignActive fires ONLY on
-        // a true app deactivation — moving focus to our OWN preview/settings window keeps Trove
-        // active, so the panel correctly stays open beneath them for side-by-side comparison.
+        // a true app deactivation — moving focus to our OWN preview window keeps Trove active,
+        // so the panel correctly stays open beneath it for side-by-side comparison.
         // Because the panel can no longer linger while another app is focused, the old *global* Esc
         // monitor became unreachable and was removed; the local key monitor's Esc (fires only while
         // the panel is key) is now the single Esc path. `hidesOnDeactivate` is left false on purpose

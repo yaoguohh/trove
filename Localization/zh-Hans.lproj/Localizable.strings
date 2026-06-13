@@ -18,7 +18,6 @@
 "Quit Trove" = "退出 Trove";
 "Quit" = "退出";
 "Check for Updates..." = "检查更新…";
-"Preferences..." = "偏好设置…";
 "Grant Accessibility Permission..." = "授予辅助功能权限…";
 "1 clip kept" = "已存 1 条";
 "%lld clips kept" = "已存 %lld 条";
@@ -57,17 +56,14 @@
 /* Rename */
 "Rename" = "重命名";
 
-/* Appearance */
+/* Appearance (inline status-menu segmented control) */
 "Appearance" = "外观";
-"Follow System" = "跟随系统";
+"Auto" = "自动";
 "Light" = "浅色";
 "Dark" = "深色";
-"Choose how Trove looks. Follow System matches your macOS setting." = "选择 Trove 的外观。「跟随系统」将匹配你的 macOS 设置。";
 
-/* Settings */
-"Trove Preferences" = "Trove 偏好设置";
-"Keyboard Shortcut" = "键盘快捷键";
+/* Shortcut recorder (inline status-menu) */
+"Shortcut" = "快捷键";
 "Recording…" = "录制中…";
 "Cancel" = "取消";
 "Reset to default" = "恢复默认";
-"Choose the global shortcut used to show or hide Trove. Press a combination with at least one modifier key." = "选择用于显示或隐藏 Trove 的全局快捷键。请按下至少包含一个修饰键的组合。";

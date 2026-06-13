@@ -9,9 +9,11 @@ enum AppAppearance: Int, CaseIterable, Identifiable {
 
     var id: Int { rawValue }
 
-    var title: String {
+    /// Compact label for the inline status-menu segmented control (the only place appearance is
+    /// chosen now). ".system" reads as "Auto" rather than "Follow System" so it fits a segment.
+    var shortTitle: String {
         switch self {
-        case .system: String(localized: "Follow System")
+        case .system: String(localized: "Auto")
         case .light: String(localized: "Light")
         case .dark: String(localized: "Dark")
         }

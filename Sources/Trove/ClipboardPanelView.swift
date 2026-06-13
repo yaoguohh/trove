@@ -7,7 +7,6 @@ struct ClipboardPanelView: View {
     @ObservedObject var model: PanelViewModel
     let close: () -> Void
     let reopen: () -> Void
-    let openSettings: () -> Void
     let preview: (ClipboardItem) -> Void
     /// Routes a key press to the controller (returns true when intercepted). Driven by the search
     /// field's onKeyPress.
@@ -179,13 +178,6 @@ struct ClipboardPanelView: View {
                 store.clearUnpinned()
             } label: {
                 Label("Clear History", systemImage: "trash")
-            }
-            Button {
-                // openSettings() (→ AppDelegate.showPreferences) closes the panel itself, so all
-                // entry points share one behavior; no explicit close() needed here.
-                openSettings()
-            } label: {
-                Label("Preferences...", systemImage: "gearshape")
             }
         } label: {
             Image(systemName: "ellipsis")

@@ -18,7 +18,6 @@
 "Quit Trove" = "Quit Trove";
 "Quit" = "Quit";
 "Check for Updates..." = "Check for Updates…";
-"Preferences..." = "Preferences...";
 "Grant Accessibility Permission..." = "Grant Accessibility Permission...";
 "1 clip kept" = "1 clip kept";
 "%lld clips kept" = "%lld clips kept";
@@ -57,17 +56,14 @@
 /* Rename */
 "Rename" = "Rename";
 
-/* Appearance */
+/* Appearance (inline status-menu segmented control) */
 "Appearance" = "Appearance";
-"Follow System" = "Follow System";
+"Auto" = "Auto";
 "Light" = "Light";
 "Dark" = "Dark";
-"Choose how Trove looks. Follow System matches your macOS setting." = "Choose how Trove looks. Follow System matches your macOS setting.";
 
-/* Settings */
-"Trove Preferences" = "Trove Preferences";
-"Keyboard Shortcut" = "Keyboard Shortcut";
+/* Shortcut recorder (inline status-menu) */
+"Shortcut" = "Shortcut";
 "Recording…" = "Recording…";
 "Cancel" = "Cancel";
 "Reset to default" = "Reset to default";
-"Choose the global shortcut used to show or hide Trove. Press a combination with at least one modifier key." = "Choose the global shortcut used to show or hide Trove. Press a combination with at least one modifier key.";

@@ -8,20 +8,27 @@ struct StatusMenuView: View {
     let clipCount: Int
     let version: String
     let accessibilityTrusted: Bool
+    @ObservedObject var shortcutStore: ShortcutStore
     @State var linkPreviewsOn: Bool
     @State var runInBackground: Bool
+    @State private var appearance = AppearanceManager.current
 
     var onShow: () -> Void
     var onToggleLinkPreviews: () -> Void
     var onToggleBackground: () -> Void
     var onClearHistory: () -> Void
     var onCheckUpdates: () -> Void
-    var onPreferences: () -> Void
+    /// Dismiss the status menu (Esc) — Preferences now live inline here, so there's no
+    /// separate window to open; the only "navigation" the menu needs is closing itself.
+    var onClose: () -> Void
     var onGrantAccessibility: () -> Void
     var onQuit: () -> Void
 
+    /// Display order for the appearance segments: Light · Dark · Auto (reading order), independent
+    /// of the enum's raw-value order (which starts at .system).
+    private let appearanceOrder: [AppAppearance] = [.light, .dark, .system]
     private let accent = Color.accentColor
-    private let width: CGFloat = 282
+    private let width: CGFloat = 300
 
     var body: some View {
         VStack(spacing: 0) {
@@ -47,9 +54,13 @@ struct StatusMenuView: View {
 
                 Divider().opacity(0.25).padding(.vertical, 5).padding(.horizontal, 4)
 
+                appearanceRow
+                shortcutRow
+
+                Divider().opacity(0.25).padding(.vertical, 5).padding(.horizontal, 4)
+
                 actionRow(icon: "trash", title: String(localized: "Clear History"), action: onClearHistory)
                 actionRow(icon: "arrow.down.circle", title: String(localized: "Check for Updates..."), action: onCheckUpdates)
-                actionRow(icon: "gearshape", title: String(localized: "Preferences..."), shortcut: "⌘,", action: onPreferences)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 7)
@@ -57,6 +68,50 @@ struct StatusMenuView: View {
             footer
         }
         .frame(width: width)
+        // Esc dismisses the menu. NSPopover does not close on Esc for free; this routes the cancel
+        // command (same mechanism as ClipCard's rename editor). While the shortcut recorder is
+        // recording, its own local key monitor eats Esc first (monitors run ahead of the responder
+        // chain), so Esc cancels recording rather than closing the menu — they compose by construction.
+        .onExitCommand { onClose() }
+    }
+
+    // MARK: Inline settings (Appearance + Shortcut)
+
+    private var appearanceRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "circle.lefthalf.filled").font(.system(size: 12)).frame(width: 17).foregroundStyle(.secondary)
+            Text(String(localized: "Appearance")).font(.system(size: 12))
+            Spacer(minLength: 8)
+            // Menu-style popup (not segmented): a segmented control stretches/looks broken on the
+            // translucent popover and can spill past the 300pt width; a compact popup stays tight to
+            // its current value and can never overflow.
+            Picker("", selection: $appearance) {
+                ForEach(appearanceOrder) { option in
+                    Text(option.shortTitle).tag(option)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .controlSize(.small)
+            .fixedSize()
+            .onChange(of: appearance) { AppearanceManager.current = appearance }
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 30)
+    }
+
+    private var shortcutRow: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 10) {
+                Image(systemName: "command").font(.system(size: 12)).frame(width: 17).foregroundStyle(.secondary)
+                Text(String(localized: "Shortcut")).font(.system(size: 12))
+                Spacer()
+            }
+            ShortcutRecorder(shortcutStore: shortcutStore)
+        }
+        .padding(.horizontal, 8)
+        .padding(.top, 4)
+        .padding(.bottom, 2)
     }
 
     // MARK: Header
