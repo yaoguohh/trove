@@ -16,14 +16,15 @@ natively in Swift / AppKit + SwiftUI.
 - Menu bar app — runs in the background with no Dock icon by default
 - Visual horizontal timeline of clipboard history (text, links, images, code, email, files)
 - **Keyboard-first**: the search field is always focused, so you just type to filter; ←/→ navigate the cards and Return pastes — no clicking, no lost first keystroke
-- Global hotkey (default `⇧⌘V`), re-recordable in Preferences
+- Global hotkey (default `⇧⌘V`), re-recordable right from the menu-bar menu
 - **Space** peeks the selected card; tap the peek (or right-click **Preview**) to open a full-size inspect window with Keep-on-Top
 - **Rich inspect window**: natively selectable text (⌘C / right-click Copy), pretty-printed JSON; a single URL opens in your default browser
 - **⌘Z restores a just-deleted clip** — multi-level undo
 - Handles huge clips gracefully — display & search stay snappy, large content spills to sidecar files
 - **Rename** any clip inline in its header (the name is searchable too)
 - Pinboards with custom colors and home-screen-style drag-to-reorder
-- Dock-style translucent glass panel; light/dark via Preferences
+- Dock-style translucent glass panel; light/dark right from the menu-bar menu
+- Right-click the menu-bar icon for a compact menu — appearance, shortcut, link previews, and background mode, all inline (no separate Preferences window)
 - Link title + favicon previews with local metadata caching
 - In-app auto-updates via [Sparkle](https://sparkle-project.org)
 - Local JSON storage in `~/Library/Application Support/Trove/`
