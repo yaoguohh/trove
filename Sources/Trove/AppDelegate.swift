@@ -2,15 +2,17 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let store = ClipboardStore()
     private let shortcutStore = ShortcutStore()
     private var monitor: ClipboardMonitor?
     private var hotKeyManager: HotKeyManager?
     private var statusItem: NSStatusItem?
     private var statusPopover: NSPopover?
+    /// Global mouse monitor live only while the status menu is open, so a click on ANY other menu-bar
+    /// icon (or anywhere outside the app) dismisses it — the gap `.transient` leaves on the menu bar.
+    private var statusPopoverMonitor: Any?
     private var panelController: ClipboardPanelController?
-    private var settingsController: SettingsPanelController?
     private var updaterController: UpdaterController?
     private let runInBackgroundKey = "Trove.runInBackground"
 
@@ -23,8 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         panelController = ClipboardPanelController(
             store: store,
-            monitor: clipboardMonitor,
-            onOpenSettings: { [weak self] in self?.showPreferences() }
+            monitor: clipboardMonitor
         )
         hotKeyManager = HotKeyManager { [weak self] in
             self?.togglePanel()
@@ -33,7 +34,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         shortcutStore.onChange = { [weak self] shortcut in
             self?.hotKeyManager?.register(shortcut: shortcut)
         }
-        settingsController = SettingsPanelController(shortcutStore: shortcutStore)
         // Sparkle auto-updates: starts scheduled background checks (release builds only — the
         // updater runtime lives in the packaged .app's embedded Sparkle.framework).
         updaterController = UpdaterController()
@@ -99,10 +99,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let popover = NSPopover()
         popover.behavior = .transient
         popover.animates = true
+        popover.delegate = self
         let view = StatusMenuView(
             clipCount: store.matches(query: "").count,
             version: Self.appVersion,
             accessibilityTrusted: AccessibilityPermission.isTrusted,
+            shortcutStore: shortcutStore,
             linkPreviewsOn: LinkMetadataProvider.isAutoFetchEnabled,
             runInBackground: runsInBackground,
             onShow: { [weak self] in self?.closeStatusPopover(); self?.showPanel() },
@@ -110,20 +112,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             onToggleBackground: { [weak self] in self?.toggleBackgroundMode() },
             onClearHistory: { [weak self] in self?.closeStatusPopover(); self?.clearUnpinned() },
             onCheckUpdates: { [weak self] in self?.closeStatusPopover(); self?.checkForUpdates(nil) },
-            onPreferences: { [weak self] in self?.closeStatusPopover(); self?.showPreferences() },
+            onClose: { [weak self] in self?.closeStatusPopover() },
             onGrantAccessibility: { [weak self] in self?.closeStatusPopover(); self?.openAccessibilitySettings() },
             onQuit: { [weak self] in self?.quit() }
         )
-        popover.contentViewController = NSHostingController(rootView: view)
+        let hosting = NSHostingController(rootView: view)
+        popover.contentViewController = hosting
+        // Size the popover to the content's real fitting size up front. Left at the default 320×320, a
+        // taller menu gets positioned for 320pt and then grows to its true height by expanding UPWARD,
+        // pushing its top off the screen on a menu-bar (top-of-screen) status item. With the correct
+        // size known before `show`, macOS anchors it cleanly below the icon, fully on-screen.
+        popover.contentSize = hosting.view.fittingSize
         statusPopover = popover
-        // Accessory apps need to activate so the popover's buttons are clickable and it dismisses on
-        // an outside click; the status menu isn't paste-related, so activating here is harmless.
+        // Accessory apps must activate so the popover's buttons are clickable and it dismisses on an
+        // outside click; the status menu isn't paste-related, so activating here is harmless.
         NSApp.activate(ignoringOtherApps: true)
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .maxY)
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        // `.transient` dismisses on clicks into other WINDOWS, but not when the user clicks a different
+        // menu-bar icon (the system menu-bar area) — more so since we activated above. A global
+        // mouse-down monitor closes the menu on any click outside the app, covering that gap. Clicks
+        // INSIDE the popover stay local to the app, so they don't trip this and the menu stays open.
+        statusPopoverMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            self?.closeStatusPopover()
+        }
     }
 
     private func closeStatusPopover() {
         statusPopover?.performClose(nil)
+        teardownStatusPopover()
+    }
+
+    /// Single teardown chokepoint: also runs on `.transient`'s own outside-click dismissal (via
+    /// `popoverDidClose`), so the global monitor is never left installed across opens.
+    func popoverDidClose(_ notification: Notification) {
+        teardownStatusPopover()
+    }
+
+    private func teardownStatusPopover() {
+        if let monitor = statusPopoverMonitor {
+            NSEvent.removeMonitor(monitor)
+            statusPopoverMonitor = nil
+        }
         statusPopover = nil
     }
 
@@ -134,17 +163,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func showPanel() {
         monitor?.rememberPasteTarget()
         panelController?.show()
-    }
-
-    @objc private func showPreferences() {
-        // Close the floating panel before opening Settings. The panel is `.floating` while the
-        // Settings window is a normal-level window, so leaving the panel up would (a) hide Settings
-        // behind it and (b) strand the panel on screen — with the global Esc monitor gone, only the
-        // panel's own key window can Esc-dismiss it, and Settings steals key. Closing here routes
-        // ALL entry points (status menu, ⌘, shortcut, and the in-panel menu) through one consistent
-        // behavior, matching the transient-panel model: navigating to Settings dismisses the panel.
-        panelController?.hide()
-        settingsController?.show()
     }
 
     @objc private func checkForUpdates(_ sender: Any?) {

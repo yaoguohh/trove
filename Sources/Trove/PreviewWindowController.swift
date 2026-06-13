@@ -79,7 +79,7 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
         let plainBody = item.kind == .image ? nil : Self.boundedBody(for: item)
         let hosting = NSHostingController(rootView: ClipPreviewView(item: item, image: image, plainBody: plainBody))
         // Drop `.intrinsicContentSize` so a `maxWidth/Height: .infinity` root fills the window
-        // instead of collapsing to its intrinsic size (the SettingsView blank-window pitfall).
+        // instead of collapsing to its intrinsic size (the frame-less-Form blank-window pitfall).
         hosting.sizingOptions = [.minSize]
         window.contentViewController = hosting
         window.setContentSize(size)
