@@ -1,20 +1,19 @@
 import AppKit
 import SwiftUI
 
-/// A rounded key-cap badge, e.g. ⇧ ⌘ V.
+/// A compact rounded key-cap badge, e.g. ⇧ ⌘ V — sized to sit inline on a menu row.
 struct KeyCapView: View {
     let symbol: String
 
     var body: some View {
         Text(symbol)
-            .font(.system(size: 13, weight: .semibold, design: .rounded))
-            .frame(minWidth: 24)
-            .frame(height: 26)
-            .padding(.horizontal, 6)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .font(.system(size: 11.5, weight: .medium, design: .rounded))
+            .frame(minWidth: 15, minHeight: 19)
+            .padding(.horizontal, 3)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke(.primary.opacity(0.10), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .strokeBorder(.primary.opacity(0.08), lineWidth: 0.5)
             }
     }
 }
@@ -29,60 +28,54 @@ struct ShortcutRecorder: View {
     @State private var monitor: Any?
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 6) {
+            // The shortcut shown as a compact pill of key caps; click to (re)record. While recording it
+            // shows the live-held modifiers, or "Recording…" until the first modifier goes down.
             Button {
                 isRecording ? stopRecording() : startRecording()
             } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: 3) {
                     if isRecording {
-                        ForEach(liveModifierSymbols, id: \.self) { KeyCapView(symbol: $0) }
-                        Text("Recording…")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.secondary)
+                        if liveModifierSymbols.isEmpty {
+                            Text("Recording…")
+                                .font(.system(size: 10.5, weight: .medium))
+                                .foregroundStyle(Color.accentColor)
+                        } else {
+                            ForEach(Array(liveModifierSymbols.enumerated()), id: \.offset) { _, symbol in
+                                KeyCapView(symbol: symbol)
+                            }
+                        }
                     } else {
                         ForEach(Array(shortcutStore.shortcut.symbols.enumerated()), id: \.offset) { _, symbol in
                             KeyCapView(symbol: symbol)
                         }
                     }
-                    Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .frame(minWidth: 210, alignment: .leading)
-                .background(.quinary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                // Fixed min size so the pill doesn't jump between the idle chips and the recording
+                // prompt; a clean accent border (no filled blob) marks the active state.
+                .frame(minWidth: 58, minHeight: 25)
+                .padding(.horizontal, 5)
                 .overlay {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(isRecording ? Color.accentColor : Color.secondary.opacity(0.25),
-                                lineWidth: isRecording ? 2 : 1)
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(isRecording ? Color.accentColor : Color.primary.opacity(0.14),
+                                      lineWidth: isRecording ? 1.5 : 1)
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
             .buttonStyle(.plain)
 
-            if isRecording {
-                Button {
-                    stopRecording()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 28, height: 28)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help(String(localized: "Cancel"))
-            } else {
-                Button {
-                    shortcutStore.reset()
-                } label: {
-                    Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: 14, weight: .medium))
-                        .frame(width: 28, height: 28)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.borderless)
-                .help(String(localized: "Reset to default"))
+            // One trailing affordance: cancel while recording, otherwise reset to the default shortcut.
+            Button {
+                isRecording ? stopRecording() : shortcutStore.reset()
+            } label: {
+                Image(systemName: isRecording ? "xmark.circle.fill" : "arrow.counterclockwise")
+                    .font(.system(size: isRecording ? 12 : 11, weight: .medium))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 18, height: 18)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .help(isRecording ? String(localized: "Cancel") : String(localized: "Reset to default"))
         }
         .onDisappear {
             stopRecording()

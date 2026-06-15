@@ -2,16 +2,22 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store = ClipboardStore()
     private let shortcutStore = ShortcutStore()
     private var monitor: ClipboardMonitor?
     private var hotKeyManager: HotKeyManager?
     private var statusItem: NSStatusItem?
-    private var statusPopover: NSPopover?
-    /// Global mouse monitor live only while the status menu is open, so a click on ANY other menu-bar
-    /// icon (or anywhere outside the app) dismisses it — the gap `.transient` leaves on the menu bar.
-    private var statusPopoverMonitor: Any?
+    /// The status menu is a hand-positioned borderless panel (no NSPopover arrow — a clean drop-down
+    /// straight under the icon, like Control Center / a `MenuBarExtra(.window)`).
+    private var statusMenuPanel: NSPanel?
+    /// Live only while the status menu is open: a global mouse monitor (dismiss on any outside click,
+    /// incl. other menu-bar icons) and a resign-active observer (dismiss on Cmd-Tab / focus loss).
+    private var statusMenuMonitor: Any?
+    private var statusMenuResignObserver: NSObjectProtocol?
+    /// When the menu last closed — so the same click that dismissed it (via the monitor) doesn't get
+    /// re-opened by the status-item action firing immediately after.
+    private var statusMenuLastClosed: Date?
     private var panelController: ClipboardPanelController?
     private var updaterController: UpdaterController?
     private let runInBackgroundKey = "Trove.runInBackground"
@@ -91,15 +97,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func showStatusMenu() {
-        guard let button = statusItem?.button else { return }
-        if let existing = statusPopover, existing.isShown {
-            existing.performClose(nil)
+        guard let button = statusItem?.button, let iconWindow = button.window else { return }
+        if statusMenuPanel != nil {               // already open → the click toggles it closed
+            closeStatusMenu()
             return
         }
-        let popover = NSPopover()
-        popover.behavior = .transient
-        popover.animates = true
-        popover.delegate = self
+        // The click that dismissed the menu also fires the status-item action; don't re-open on it.
+        if let closed = statusMenuLastClosed, Date().timeIntervalSince(closed) < 0.2 { return }
+
         let view = StatusMenuView(
             clipCount: store.matches(query: "").count,
             version: Self.appVersion,
@@ -107,53 +112,70 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             shortcutStore: shortcutStore,
             linkPreviewsOn: LinkMetadataProvider.isAutoFetchEnabled,
             runInBackground: runsInBackground,
-            onShow: { [weak self] in self?.closeStatusPopover(); self?.showPanel() },
+            onShow: { [weak self] in self?.closeStatusMenu(); self?.showPanel() },
             onToggleLinkPreviews: { [weak self] in self?.toggleLinkPreviews() },
             onToggleBackground: { [weak self] in self?.toggleBackgroundMode() },
-            onClearHistory: { [weak self] in self?.closeStatusPopover(); self?.clearUnpinned() },
-            onCheckUpdates: { [weak self] in self?.closeStatusPopover(); self?.checkForUpdates(nil) },
-            onClose: { [weak self] in self?.closeStatusPopover() },
-            onGrantAccessibility: { [weak self] in self?.closeStatusPopover(); self?.openAccessibilitySettings() },
+            onClearHistory: { [weak self] in self?.closeStatusMenu(); self?.clearUnpinned() },
+            onCheckUpdates: { [weak self] in self?.closeStatusMenu(); self?.checkForUpdates(nil) },
+            onClose: { [weak self] in self?.closeStatusMenu() },
+            onGrantAccessibility: { [weak self] in self?.closeStatusMenu(); self?.openAccessibilitySettings() },
             onQuit: { [weak self] in self?.quit() }
         )
         let hosting = NSHostingController(rootView: view)
-        popover.contentViewController = hosting
-        // Size the popover to the content's real fitting size up front. Left at the default 320×320, a
-        // taller menu gets positioned for 320pt and then grows to its true height by expanding UPWARD,
-        // pushing its top off the screen on a menu-bar (top-of-screen) status item. With the correct
-        // size known before `show`, macOS anchors it cleanly below the icon, fully on-screen.
-        popover.contentSize = hosting.view.fittingSize
-        statusPopover = popover
-        // Accessory apps must activate so the popover's buttons are clickable and it dismisses on an
-        // outside click; the status menu isn't paste-related, so activating here is harmless.
+        let size = hosting.view.fittingSize
+
+        let panel = StatusMenuPanel(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        panel.contentViewController = hosting
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true                    // follows the rounded glass content -> a rounded shadow
+        panel.level = .popUpMenu
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.isReleasedWhenClosed = false
+        panel.isRestorable = false
+        panel.hidesOnDeactivate = false           // we dismiss explicitly via the resign-active observer
+        panel.animationBehavior = .utilityWindow
+
+        // Drop straight down from the icon, centered on it, clamped fully on-screen.
+        let iconFrame = iconWindow.frame
+        var origin = NSPoint(x: iconFrame.midX - size.width / 2, y: iconFrame.minY - 4 - size.height)
+        if let vis = (iconWindow.screen ?? NSScreen.main)?.visibleFrame {
+            origin.x = min(max(origin.x, vis.minX + 8), vis.maxX - size.width - 8)
+        }
+        panel.setFrame(NSRect(origin: origin, size: size), display: false)
+        statusMenuPanel = panel
+
+        // Activate so the buttons are clickable and Esc (the view's onExitCommand) reaches a key window.
         NSApp.activate(ignoringOtherApps: true)
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        // `.transient` dismisses on clicks into other WINDOWS, but not when the user clicks a different
-        // menu-bar icon (the system menu-bar area) — more so since we activated above. A global
-        // mouse-down monitor closes the menu on any click outside the app, covering that gap. Clicks
-        // INSIDE the popover stay local to the app, so they don't trip this and the menu stays open.
-        statusPopoverMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            self?.closeStatusPopover()
+        panel.makeKeyAndOrderFront(nil)
+
+        statusMenuMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            self?.closeStatusMenu()
+        }
+        statusMenuResignObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.closeStatusMenu() }
         }
     }
 
-    private func closeStatusPopover() {
-        statusPopover?.performClose(nil)
-        teardownStatusPopover()
-    }
-
-    /// Single teardown chokepoint: also runs on `.transient`'s own outside-click dismissal (via
-    /// `popoverDidClose`), so the global monitor is never left installed across opens.
-    func popoverDidClose(_ notification: Notification) {
-        teardownStatusPopover()
-    }
-
-    private func teardownStatusPopover() {
-        if let monitor = statusPopoverMonitor {
+    private func closeStatusMenu() {
+        if let monitor = statusMenuMonitor {
             NSEvent.removeMonitor(monitor)
-            statusPopoverMonitor = nil
+            statusMenuMonitor = nil
         }
-        statusPopover = nil
+        if let observer = statusMenuResignObserver {
+            NotificationCenter.default.removeObserver(observer)
+            statusMenuResignObserver = nil
+        }
+        statusMenuPanel?.orderOut(nil)
+        statusMenuPanel = nil
+        statusMenuLastClosed = Date()
     }
 
     private static var appVersion: String {
@@ -189,4 +211,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc private func quit() {
         NSApplication.shared.terminate(nil)
     }
+}
+
+/// A borderless panel that can become key — so the status menu's Esc and its buttons work — used to
+/// present the status menu without NSPopover's arrow (a clean drop-down straight under the icon).
+private final class StatusMenuPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
 }
