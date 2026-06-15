@@ -238,16 +238,20 @@ final class PasteExecutor {
 
     @discardableResult
     private func sendPasteKeystroke() -> Bool {
-        // Aligned with Maccy/Clipy's proven approach:
-        // - .combinedSessionState event source + suppressing local keyboard events so
-        //   modifier keys the user is still holding don't pollute the synthesized ⌘V.
-        // - command flag plus 0x8 (a compatibility bit Flycut introduced and Maccy carries).
-        // - posted to the session event tap (delivers to the current session's focus).
+        // Aligned with Maccy/Clipy's approach: a .combinedSessionState source, the Flycut/Maccy
+        // command+0x8 compatibility flag, posted to the session event tap (the current session's focus).
+        //
+        // Crucially we do NOT suppress the user's real keyboard around the synthesized ⌘V. The events
+        // below carry explicit, clean flags, so the held-modifier pollution the suppression used to guard
+        // against is already handled — whereas the default ~0.25s suppression interval (with a mask that
+        // omitted keyboard) would DROP a real Cmd+C the user happens to press just after pasting from
+        // Trove, silently losing their copy. So permit local keyboard events AND zero the interval.
         let source = CGEventSource(stateID: .combinedSessionState)
         source?.setLocalEventsFilterDuringSuppressionState(
-            [.permitLocalMouseEvents, .permitSystemDefinedEvents],
+            [.permitLocalMouseEvents, .permitLocalKeyboardEvents, .permitSystemDefinedEvents],
             state: .eventSuppressionStateSuppressionInterval
         )
+        source?.localEventsSuppressionInterval = 0
         guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: KeyCode.v, keyDown: true),
               let keyUp = CGEvent(keyboardEventSource: source, virtualKey: KeyCode.v, keyDown: false) else {
             return false
