@@ -1,6 +1,8 @@
+import AppKit
 import SwiftUI
 
-/// The menu-bar status menu, rendered as a designed SwiftUI panel (shown in an NSPopover) instead of a
+/// The menu-bar status menu, rendered as a designed SwiftUI panel (presented in a borderless drop-down
+/// window under the icon, no NSPopover arrow) instead of a
 /// stock `NSMenu`: an app-icon header, sectioned rows with SF Symbol glyphs, inline switches for the
 /// toggles, and a footer — the polished look of a modern menu-bar app. Pure view; AppDelegate injects
 /// the current state and the action callbacks.
@@ -12,6 +14,7 @@ struct StatusMenuView: View {
     @State var linkPreviewsOn: Bool
     @State var runInBackground: Bool
     @State private var appearance = AppearanceManager.current
+    @Environment(\.colorScheme) private var colorScheme
 
     var onShow: () -> Void
     var onToggleLinkPreviews: () -> Void
@@ -68,7 +71,16 @@ struct StatusMenuView: View {
             footer
         }
         .frame(width: width)
-        // Esc dismisses the menu. NSPopover does not close on Esc for free; this routes the cancel
+        // Opaque frosted background so the popover reads as a solid menu instead of letting the desktop
+        // and windows behind it bleed through (NSPopover's own material is too thin on busy backgrounds).
+        // Same dense materials as the clipboard panel's glass — .hudWindow (dark) / .menu (light) — which
+        // blur the background into a uniform wash rather than showing it. This is what MenuBarExtra's
+        // `.window` style gives for free; we replicate it for the hand-rolled NSPopover.
+        .background(VisualEffectBackground(material: colorScheme == .dark ? .hudWindow : .menu))
+        // Round the whole thing (glass + content): the borderless panel has no chrome of its own, and
+        // its window shadow follows this rounded opaque shape.
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        // Esc dismisses the menu. A borderless panel doesn't close on Esc for free; this routes the cancel
         // command (same mechanism as ClipCard's rename editor). While the shortcut recorder is
         // recording, its own local key monitor eats Esc first (monitors run ahead of the responder
         // chain), so Esc cancels recording rather than closing the menu — they compose by construction.
@@ -101,17 +113,14 @@ struct StatusMenuView: View {
     }
 
     private var shortcutRow: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 10) {
-                Image(systemName: "command").font(.system(size: 12)).frame(width: 17).foregroundStyle(.secondary)
-                Text(String(localized: "Shortcut")).font(.system(size: 12))
-                Spacer()
-            }
+        HStack(spacing: 10) {
+            Image(systemName: "command").font(.system(size: 12)).frame(width: 17).foregroundStyle(.secondary)
+            Text(String(localized: "Shortcut")).font(.system(size: 12))
+            Spacer(minLength: 8)
             ShortcutRecorder(shortcutStore: shortcutStore)
         }
         .padding(.horizontal, 8)
-        .padding(.top, 4)
-        .padding(.bottom, 2)
+        .frame(height: 30)
     }
 
     // MARK: Header
@@ -265,5 +274,25 @@ private struct MiniSwitch: View {
                 alignment: isOn ? .trailing : .leading
             )
             .animation(.easeOut(duration: 0.15), value: isOn)
+    }
+}
+
+/// A dense frosted background blended behind the window (like the Dock / a native menu), so the
+/// popover stays opaque over busy backgrounds. `isEmphasized` + full opacity make the blur — not
+/// alpha — do the hiding; the caller picks the material per appearance.
+private struct VisualEffectBackground: NSViewRepresentable {
+    let material: NSVisualEffectView.Material
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        view.blendingMode = .behindWindow
+        view.state = .active
+        view.isEmphasized = true
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {
+        view.material = material
     }
 }
