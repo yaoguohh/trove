@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import Carbon  // ProcessSerialNumber (Process Manager) for front-window-only activation
 
 struct PasteTargetSnapshot {
     let application: NSRunningApplication
@@ -83,6 +84,19 @@ final class PasteExecutor {
             )
         }
 
+        // Full text (sidecar-backed for big clips), read once. Images can't be AX-inserted.
+        let full = item.kind != .image ? item.fullText : nil
+
+        // Fast path: insert via the Accessibility API WITHOUT activating the target app. Activating an
+        // app brings its windows forward — that's why a user with many browser windows sees the OTHER
+        // ones jump to the top after a paste. AX text insertion into the captured focused element does
+        // not need the app frontmost, so try it first; on success, window order is never touched. Only
+        // when AX can't insert (notably secure password fields) do we fall back to activating + Cmd+V.
+        if let target, target.isFresh, let full,
+           let result = accessibilityInsert(full, into: target) {
+            return result
+        }
+
         guard let target, target.isFresh else {
             // Fallback (no fresh AX target). The panel was ordered out before paste, but
             // Trove can still be the active app, so a blind Cmd+V would land on nothing.
@@ -102,37 +116,14 @@ final class PasteExecutor {
             )
         }
 
+        // AX insertion didn't take while the target was in the background — secure password fields (and
+        // some browser web content) only accept it, if at all, when frontmost. Bring the target forward
+        // (front-window-only, so the app's OTHER windows are not raised) and retry AX before the Cmd+V
+        // keystroke fallback.
         await bringTargetToFront(target)
 
-        if item.kind != .image {
-            // Full text (sidecar-backed for big clips), read once.
-            let full = item.fullText
-            if let element = target.resolvedFocusedElement() {
-                // Prefer replacing the current selection (AXSelectedText) over rewriting
-                // the entire field value (AXValue), which is heavier and can clobber rich
-                // formatting in capable text controls.
-                let selectedTextResult = insertViaSelectedText(full, into: element)
-                if selectedTextResult == .success {
-                    return PasteExecutionResult(
-                        strategy: .accessibilitySelectedText,
-                        success: true,
-                        detail: "Inserted text through AXSelectedText into \(target.localizedName)."
-                    )
-                }
-
-                let valueRangeResult = insertViaValueRange(full, into: element)
-                if valueRangeResult == .success {
-                    return PasteExecutionResult(
-                        strategy: .accessibilityValueRange,
-                        success: true,
-                        detail: "Inserted text through AXValue/AXSelectedTextRange into \(target.localizedName)."
-                    )
-                }
-
-                debugLog("Trove AX paste failed for \(target.localizedName): selectedText=\(selectedTextResult.rawValue), valueRange=\(valueRangeResult.rawValue)")
-            } else {
-                debugLog("Trove AX paste skipped for \(target.localizedName): no focused element")
-            }
+        if let full, let result = accessibilityInsert(full, into: target) {
+            return result
         }
 
         let keystrokeSent = sendPasteKeystroke()
@@ -145,6 +136,39 @@ final class PasteExecutor {
         )
     }
 
+    /// Insert `full` into the target's focused element via Accessibility, returning a successful result
+    /// or nil if there's no focused element / AX couldn't insert (the caller then escalates). Critically,
+    /// this does NOT activate the app or change window order — that's why it's tried before
+    /// `bringTargetToFront`, so a successful paste leaves the user's other windows untouched.
+    private func accessibilityInsert(_ full: String, into target: PasteTargetSnapshot) -> PasteExecutionResult? {
+        guard let element = target.resolvedFocusedElement() else {
+            debugLog("Trove AX paste skipped for \(target.localizedName): no focused element")
+            return nil
+        }
+        // Prefer replacing the current selection (AXSelectedText) over rewriting the entire field value
+        // (AXValue), which is heavier and can clobber rich formatting in capable text controls.
+        let selectedTextResult = insertViaSelectedText(full, into: element)
+        if selectedTextResult == .success {
+            return PasteExecutionResult(
+                strategy: .accessibilitySelectedText,
+                success: true,
+                detail: "Inserted text through AXSelectedText into \(target.localizedName)."
+            )
+        }
+
+        let valueRangeResult = insertViaValueRange(full, into: element)
+        if valueRangeResult == .success {
+            return PasteExecutionResult(
+                strategy: .accessibilityValueRange,
+                success: true,
+                detail: "Inserted text through AXValue/AXSelectedTextRange into \(target.localizedName)."
+            )
+        }
+
+        debugLog("Trove AX paste failed for \(target.localizedName): selectedText=\(selectedTextResult.rawValue), valueRange=\(valueRangeResult.rawValue)")
+        return nil
+    }
+
     private func isAccessibilityTrusted(promptIfNeeded: Bool) -> Bool {
         if AccessibilityPermission.isTrusted {
             return true
@@ -154,9 +178,17 @@ final class PasteExecutor {
     }
 
     private func bringTargetToFront(_ target: PasteTargetSnapshot) async {
-        target.application.activate(options: [])
-        let appElement = AXUIElementCreateApplication(target.processIdentifier)
-        AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+        // NSRunningApplication.activate(options:[]) has a Big-Sur-onward regression: it raises ALL of
+        // the app's windows (as if .activateAllWindows were always set) instead of just the main/key
+        // window. That is what makes a user's OTHER browser windows jump to the top when Trove must
+        // activate to deliver a Cmd+V — the password-field path, where AX text insertion is blocked by
+        // the secure field. Use the Carbon Process Manager's front-window-only activation, which makes
+        // the app key for keyboard input but raises ONLY its frontmost window — the documented community
+        // workaround for this exact bug. (Also drop the app-level kAXFrontmostAttribute set, which had
+        // the same raise-everything side effect.) Falls back to NSRunningApplication if unavailable.
+        if !activateFrontWindowOnly(pid: target.processIdentifier) {
+            target.application.activate(options: [])
+        }
 
         let deadline = Date().addingTimeInterval(0.60)
         while Date() < deadline {
@@ -169,6 +201,28 @@ final class PasteExecutor {
         if let element = target.resolvedFocusedElement() {
             AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
         }
+    }
+
+    /// Activate `pid`'s app for keyboard input while raising ONLY its frontmost window (not every window
+    /// the app owns) — the standard workaround for the `NSRunningApplication.activate` "raises all
+    /// windows" regression. The Carbon Process Manager calls it needs (`GetProcessForPID`,
+    /// `SetFrontProcessWithOptions`) are marked *unavailable* in Swift (not merely deprecated), so they
+    /// are resolved at runtime via `dlsym` — Carbon is linked into the process, so the symbols are
+    /// present. Returns false on any failure so the caller can fall back to `NSRunningApplication`.
+    private func activateFrontWindowOnly(pid: pid_t) -> Bool {
+        typealias GetProcessForPIDFn = @convention(c) (pid_t, UnsafeMutablePointer<ProcessSerialNumber>) -> OSStatus
+        typealias SetFrontProcessFn = @convention(c) (UnsafePointer<ProcessSerialNumber>, UInt32) -> OSStatus
+        let rtldDefault = UnsafeMutableRawPointer(bitPattern: -2)  // RTLD_DEFAULT: search all loaded images
+        guard let getSym = dlsym(rtldDefault, "GetProcessForPID"),
+              let setSym = dlsym(rtldDefault, "SetFrontProcessWithOptions") else {
+            return false
+        }
+        let getProcessForPID = unsafeBitCast(getSym, to: GetProcessForPIDFn.self)
+        let setFrontProcess = unsafeBitCast(setSym, to: SetFrontProcessFn.self)
+        var psn = ProcessSerialNumber()
+        guard getProcessForPID(pid, &psn) == noErr else { return false }
+        // kSetFrontProcessFrontWindowOnly == 1: activate for input, raise only the frontmost window.
+        return setFrontProcess(&psn, 1) == noErr
     }
 
     private func insertViaSelectedText(_ text: String, into element: AXUIElement) -> AXError {
