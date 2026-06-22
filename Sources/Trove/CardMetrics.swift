@@ -16,10 +16,10 @@ struct CardMetrics {
     let bodySize: CGFloat
     let footerSize: CGFloat
 
-    /// Reference card footprint used by `ClipboardPanelController.position()` to size the panel and
-    /// estimate how many cards fit on screen. These mirror the enlarged card's typical on-screen
-    /// width/spacing (the live size is computed from container height in `init`); keeping them here
-    /// means panel sizing and card geometry can't silently drift apart.
+    /// Reference card footprint used by `ClipboardPanelController.visibleCardCount()` to estimate
+    /// how many cards fit across the panel (the ⌘←/⌘→ page size). These mirror the enlarged card's
+    /// typical on-screen width/spacing (the live size is computed from container height in `init`);
+    /// keeping them here means the page-size estimate can't silently drift from the card geometry.
     static let referenceCardWidth: CGFloat = 296
     static let referenceCardSpacing: CGFloat = 18
 
