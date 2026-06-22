@@ -351,6 +351,57 @@ struct ClipboardItemMigrationTests {
 }
 
 @MainActor
+struct ClipboardStoreUsageTests {
+    @Test func recordUseStampsLastUsedAt() {
+        let (store, _) = makeTempStore()
+        store.add(text: "a", sourceApp: "X")
+        #expect(store.items[0].lastUsedAt == nil)   // never used yet
+        store.recordUse(store.items[0])
+        #expect(store.items[0].lastUsedAt != nil)   // now stamped
+    }
+
+    @Test func recordUsePersistsAcrossReload() {
+        let (store, url) = makeTempStore()
+        store.add(text: "a", sourceApp: "X")
+        store.recordUse(store.items[0])
+        store.flush()
+
+        let reloaded = ClipboardStore(storeURL: url)
+        #expect(reloaded.items.count == 1)
+        #expect(reloaded.items[0].lastUsedAt != nil)
+    }
+
+    @Test func legacyDocDecodesLastUsedAtAsNil() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TroveTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("history.json")
+        // A document lacking the lastUsedAt key (everything shipped before usage tracking) must
+        // decode cleanly with lastUsedAt == nil — the same forward-compat contract as the sidecar keys.
+        let legacy = """
+        {"items":[{"id":"\(UUID().uuidString)","text":"hi","sourceApp":"Safari","createdAt":700000000,"isPinned":false,"kind":"text","characterCount":2}],"pinboards":[]}
+        """
+        try Data(legacy.utf8).write(to: url)
+
+        let store = ClipboardStore(storeURL: url)
+        #expect(store.items.count == 1)
+        #expect(store.items[0].lastUsedAt == nil)
+    }
+
+    @Test func undoDeletePreservesLastUsedAt() {
+        let (store, _) = makeTempStore()
+        store.add(text: "a", sourceApp: "X")
+        store.recordUse(store.items[0])
+        let used = store.items[0]
+        store.delete(used)
+
+        let restored = store.undoDelete()
+        #expect(restored?.lastUsedAt == used.lastUsedAt)
+        #expect(restored?.lastUsedAt != nil)
+    }
+}
+
+@MainActor
 struct ClipboardFidelityTests {
     @Test func fullTextEqualsInlineForSubThreshold() {
         let (store, _) = makeTempStore()

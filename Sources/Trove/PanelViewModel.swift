@@ -52,6 +52,10 @@ final class PanelViewModel: ObservableObject {
         showToken &+= 1
     }
 
+    /// Pre-select the leading card on summon (and on each search) so it's always the fully-visible
+    /// first card the auto-scroll keeps at the leading edge. (Usage is tracked in `lastUsedAt` for a
+    /// future opt-in "Most Used" mode, but it deliberately does NOT bias this default selection — doing
+    /// so picked a mid-strip card and the centering auto-scroll then clipped the first card off-screen.)
     func selectFirst() {
         selectedID = filteredItems.first?.id
     }

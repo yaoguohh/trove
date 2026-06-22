@@ -74,6 +74,11 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
     /// The clip's true source length in characters (== `characterCount` except for ceiling-truncated
     /// clips, where `characterCount` is also the original length so the footer stays honest).
     var originalCharacterCount: Int
+    /// When the clip was last PASTED from the panel; `nil` until it's used (and for any clip stored
+    /// before usage tracking shipped). Deliberately SEPARATE from `createdAt` — `createdAt` stays an
+    /// honest copy timestamp for the card's relative-time display, while `lastUsedAt` drives the
+    /// on-summon "pre-select the most-recently-used card" bias without ever reordering the timeline.
+    var lastUsedAt: Date?
 
     /// Upper bound on the number of characters `preview` derives from the full text. A card only
     /// shows a handful of lines, so capping the SOURCE keeps `preview` (and everything downstream of
@@ -183,6 +188,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
         self.fullTextHash = nil
         self.isTruncated = false
         self.originalCharacterCount = self.characterCount
+        self.lastUsedAt = nil
     }
 
     init(from decoder: Decoder) throws {
@@ -204,6 +210,8 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
         fullTextHash = try container.decodeIfPresent(String.self, forKey: .fullTextHash)
         isTruncated = try container.decodeIfPresent(Bool.self, forKey: .isTruncated) ?? false
         originalCharacterCount = try container.decodeIfPresent(Int.self, forKey: .originalCharacterCount) ?? characterCount
+        // Forward-compatible: documents written before usage tracking lack this key → nil (never used).
+        lastUsedAt = try container.decodeIfPresent(Date.self, forKey: .lastUsedAt)
     }
 
     var imageFileURL: URL? {

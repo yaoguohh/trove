@@ -42,6 +42,10 @@ final class ClipboardMonitor {
     func copyAndPaste(_ item: ClipboardItem, asPlainText: Bool = false) {
         let targetSnapshot = pasteTargetSnapshot
         copy(item, asPlainText: asPlainText)
+        // Record the paste as a "use" (the single hook for every paste-from-panel action — keyboard
+        // Return/⌥Return and the view's click/menu paste both land here). poll() echo-suppresses this
+        // write, so a use never re-enters add(); recordUse only stamps lastUsedAt for the summon bias.
+        store.recordUse(item)
 
         Task { @MainActor in
             let result = await PasteExecutor.shared.paste(item: item, target: targetSnapshot)
