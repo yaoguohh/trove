@@ -10,17 +10,23 @@ final class ClipboardPanelController {
     private var hostingController: NSHostingController<ClipboardPanelView>?
     // App-lifetime observer (the controller is held by AppDelegate for the whole run), so it never
     // needs explicit removal; the [weak self] closure keeps it from retaining the controller.
-    private var resignActiveObserver: NSObjectProtocol?
+    private var appActivationObserver: NSObjectProtocol?
+    // Global mouse monitor (app-lifetime; the [weak self] closure keeps it from retaining the
+    // controller) — the click-outside escape hatch for when the panel never became key.
+    private var clickAwayMonitor: Any?
     private let model: PanelViewModel
     private lazy var previewController = PreviewWindowController()
     private lazy var quickLook = QuickLookBubbleController()
+    /// True while the animated drawer-collapse hide is in flight, so a second dismissal can't re-enter
+    /// it and capture the half-collapsed frame as its startFrame.
+    private var isHiding = false
 
     /// Panel corner radius. The glass mask (AppKit) and the content clip (SwiftUI) must use
     /// the same value — keep `ClipboardPanelView`'s 16pt corners in sync with this.
     static let cornerRadius: CGFloat = 16
 
-    /// Panel non-card width (toolbar + side insets around the card strip). Single source of truth for
-    /// both panel sizing (`position()`) and the ⌘←/⌘→ page size (`visibleCardCount()`).
+    /// Panel non-card width (toolbar + side insets around the card strip). Used to derive the
+    /// ⌘←/⌘→ page size in `visibleCardCount()`.
     private static let chromeWidth: CGFloat = 96
 
     var isVisible: Bool {
@@ -42,17 +48,24 @@ final class ClipboardPanelController {
             createPanel()
         }
         guard let panel else { return }
-        // Forcefully activate Trove so the panel becomes a fully-interactive KEY window. The no-arg
-        // `NSApp.activate()` (the cooperative macOS-14 path) will NOT steal activation from a frontmost
-        // app that owns the input focus — e.g. when you were typing in another app's text field — so
-        // the panel never becomes key and keystrokes keep going to that app (the focus bug). With
-        // `ignoringOtherApps: true` an accessory app summoned over another app reliably takes focus;
-        // `showStatusMenu()` already uses it for the status popover. The paste target was snapshotted
-        // before showing and is re-activated on paste, so stealing focus here doesn't affect pasting.
-        NSApp.activate(ignoringOtherApps: true)
+        isHiding = false   // a re-summon cancels any in-flight collapse
         panel.alphaValue = 1
         position(panel)
-        panel.makeKeyAndOrderFront(nil)
+        // The panel is a `.nonactivatingPanel`, so it becomes the KEY window and receives keyboard
+        // WITHOUT activating Trove or stealing the frontmost app's active status — the idiomatic
+        // launcher pattern (the same one our QuickLook bubble uses). We deliberately do NOT call
+        // `NSApp.activate`: on macOS 14+ the old `ignoringOtherApps: true` is ignored and activation is
+        // only a cooperative request, and NOT stealing activation means the previous app (the paste
+        // target) stays frontmost, so dismissing the panel returns the user there cleanly. A key
+        // nonactivating panel routes typing into the search field on its own. `orderFrontRegardless`
+        // shows it even though our accessory app is inactive; `makeKey` makes it the keyboard target.
+        //
+        // The one case this cannot beat is a focused password field: its app holds macOS secure event
+        // input, which withholds the keyboard from every other process (true for Spotlight/Alfred/Raycast
+        // too). There the panel is operated by mouse (click a card to paste) and dismissed via the
+        // click-away monitor or the hotkey — pasting itself never depended on the panel being key.
+        panel.orderFrontRegardless()
+        panel.makeKey()
         // Fresh state on every (re)show. The SwiftUI view focuses the search field (on showToken),
         // so typing filters immediately with no lost first character, and ←/→ navigate the cards via
         // the field's onKeyPress interception.
@@ -67,6 +80,7 @@ final class ClipboardPanelController {
         // — a single chokepoint so the bubble can never outlive the panel.
         quickLook.hide()
         guard let panel, panel.isVisible, animated else {
+            isHiding = false
             panel?.alphaValue = 0
             panel?.orderOut(nil)
             // Force the visibility change to the window server this frame.
@@ -74,6 +88,10 @@ final class ClipboardPanelController {
             CATransaction.flush()
             return
         }
+        // A second animated dismissal while the 0.18s collapse is still running would read the
+        // half-collapsed frame as its startFrame and restore a wrong size/position on the next show.
+        guard !isHiding else { return }
+        isHiding = true
 
         // Drawer collapse: slide down + fade out, then order out.
         let startFrame = panel.frame
@@ -87,6 +105,7 @@ final class ClipboardPanelController {
         }, completionHandler: { [weak self] in
             // NSAnimationContext completion runs on the main thread.
             MainActor.assumeIsolated {
+                self?.isHiding = false
                 guard let panel = self?.panel, panel.alphaValue < 0.5 else { return } // re-shown mid-animation
                 panel.orderOut(nil)
                 panel.alphaValue = 1
@@ -108,8 +127,11 @@ final class ClipboardPanelController {
         let hosting = ClickThroughHostingController(rootView: root)
         hostingController = hosting
         let panel = TrovePanel(
+            // `.nonactivatingPanel` lets the borderless panel become key and take keyboard input without
+            // activating Trove (a background accessory) or stealing the frontmost app's active status —
+            // the launcher-standard summon. The flag is only honored at init, so it must be set here.
             contentRect: NSRect(x: 0, y: 0, width: 1180, height: 450),
-            styleMask: [.borderless],
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -178,20 +200,38 @@ final class ClipboardPanelController {
         panel.contentView = containerView
         self.panel = panel
 
-        // Spotlight-style auto-dismiss: collapse the panel the moment Trove stops being the
-        // active app (the user clicked another app or the desktop). didResignActive fires ONLY on
-        // a true app deactivation — moving focus to our OWN preview window keeps Trove active,
-        // so the panel correctly stays open beneath it for side-by-side comparison.
-        // Because the panel can no longer linger while another app is focused, the old *global* Esc
-        // monitor became unreachable and was removed; the local key monitor's Esc (fires only while
-        // the panel is key) is now the single Esc path. `hidesOnDeactivate` is left false on purpose
-        // so this animated, monitor-cleaning hide() runs instead of AppKit's abrupt orderOut.
-        resignActiveObserver = NotificationCenter.default.addObserver(
-            forName: NSApplication.didResignActiveNotification,
+        // Spotlight-style auto-dismiss. The panel is a `.nonactivatingPanel`, so summoning it does NOT
+        // make Trove the active app — which means the old `didResignActive` observer would never fire
+        // (Trove was never active) and the panel would linger when the user Cmd-Tabs / Spotlights / opens
+        // another app. Instead, watch for ANOTHER app becoming active: didActivateApplication covers
+        // Cmd-Tab, Spotlight, app launches, and clicking another app. We IGNORE activations of Trove
+        // itself, so opening our own preview window (which calls NSApp.activate) keeps the panel open
+        // beneath it for side-by-side comparison. `hidesOnDeactivate` stays false on purpose so this
+        // animated, monitor-cleaning hide() runs instead of AppKit's abrupt orderOut.
+        appActivationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,
             queue: .main
-        ) { [weak self] _ in
-            // Delivered on the main queue, so this runs on the main actor.
+        ) { [weak self] note in
+            // Extract the Sendable pid here (the closure runs on the main queue); only it crosses into
+            // the MainActor-isolated block, so `note` never risks a cross-actor data race. Using the pid
+            // (always present) rather than the bundle id avoids dismissing on a process with a nil
+            // bundleIdentifier, and the guard-let means an activation we can't identify leaves the panel
+            // up (the click-away monitor / hotkey are still available) rather than spuriously closing it.
+            let activatedPID = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier
+            MainActor.assumeIsolated {
+                guard let self, self.isVisible, let activatedPID,
+                      activatedPID != ProcessInfo.processInfo.processIdentifier else { return }
+                self.hide(animated: true)
+            }
+        }
+
+        // Mouse-down escape hatch for the one case the activation observer misses: clicking back into the
+        // app that is ALREADY active (no re-activation, so no didActivate) or the desktop. Mouse events
+        // aren't suppressed by secure event input, so this also dismisses the panel when it was summoned
+        // over a password field and never became key. Clicks inside Trove's own windows are local events
+        // and don't reach this global monitor, so clicking a card still selects/pastes.
+        clickAwayMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, self.isVisible else { return }
                 self.hide(animated: true)
