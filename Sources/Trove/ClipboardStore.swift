@@ -295,6 +295,17 @@ final class ClipboardStore: ObservableObject {
         scheduleSave()
     }
 
+    /// Record that a clip was just pasted from the panel by stamping `lastUsedAt`. This is currently
+    /// kept as raw data for a future opt-in "Most Used" mode — nothing reads it yet — so it deliberately
+    /// does NOT `scheduleSave()`: persisting on every paste would re-encode the whole history document
+    /// for a field no code consumes. The in-memory value is up to date for any same-session reader, and
+    /// it is durably written by the next real mutation's save or the quit-time `flush()`. Operates on
+    /// metadata only — never reads `fullText`, never reorders the timeline.
+    func recordUse(_ item: ClipboardItem) {
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        items[index].lastUsedAt = Date()
+    }
+
     func createPinboard(named name: String, colorName: String = "blue") {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
