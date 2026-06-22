@@ -216,33 +216,20 @@ final class ClipboardPanelController {
         guard let vis = targetScreen()?.visibleFrame else { return }
         let bottomMargin = max(12, min(28, vis.height * 0.020))
 
-        // Reference card footprint (kept in CardMetrics so panel sizing can't drift from the card's
-        // real geometry); scale the visible card *count* with the display, not the card.
-        let cardW = CardMetrics.referenceCardWidth
-        let gap = CardMetrics.referenceCardSpacing
-        let chrome = Self.chromeWidth       // toolbar + side insets around the card strip
-
-        // Large displays fill the width edge-to-edge (full-width look on request); a hair of side
-        // margin keeps the rounded corners + shadow readable. Smaller displays keep the
-        // content-driven width with generous margins so it doesn't sprawl.
-        let isLargeDisplay = vis.width >= 1680
-        let width: CGFloat
-        if isLargeDisplay {
-            width = vis.width - 16
-        } else {
-            let sideMargin = max(24, min(80, vis.width * 0.03))
-            let contentMax = vis.width - sideMargin * 2
-            let capWidth = min(vis.width * 0.90, 2480, contentMax)
-            let screenCapacity = max(3, min(8, Int((capWidth - chrome + gap) / (cardW + gap))))
-            let itemCount = max(1, min(screenCapacity, store.matches(query: "").count))
-            let desiredWidth = CGFloat(itemCount) * cardW + CGFloat(max(0, itemCount - 1)) * gap + chrome
-            width = min(contentMax, max(720, desiredWidth))
-        }
+        // Every display fills the width edge-to-edge; a hair of side margin keeps the rounded
+        // corners + shadow readable. (When there are few clips the cards left-align and the strip's
+        // trailing space stays empty — the same look the panel has always had on wide displays.)
+        // Never below the 720pt minSize, or AppKit would clamp the width while the origin below stays
+        // centered on the smaller value, mis-centering / overflowing the panel on a very narrow display.
+        let width = max(720, vis.width - 16)
         // Taller panel so the enlarged cards can reach their height cap on a big display.
         let height = min(376, max(256, vis.height * 0.26))
 
+        // Center horizontally, but never let the left edge fall off-screen: on a display narrower than
+        // the 720pt floor the centered origin would be negative, hiding the leading cards. Pinning to
+        // vis.minX keeps the content (which left-aligns) visible even if the right edge then overflows.
         let origin = NSPoint(
-            x: (vis.midX - width / 2).rounded(),
+            x: (max(vis.minX, vis.midX - width / 2)).rounded(),
             y: (vis.minY + bottomMargin).rounded()
         )
         panel.setFrame(NSRect(origin: origin, size: NSSize(width: width, height: height)), display: true)
