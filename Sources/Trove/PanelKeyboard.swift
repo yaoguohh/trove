@@ -9,10 +9,9 @@ enum PanelFocus: Hashable {
 }
 
 /// What a keystroke should DO in the panel, decided purely from the key + modifiers + a snapshot of
-/// panel state. The search field is ALWAYS the focused field; navigation/action keys are intercepted
-/// (`.handled`) by its `onKeyPress` and routed here, while printable keys and plain ⌫ fall through
-/// (`.passThrough`/`.ignored`) and edit the search text natively. Keeping the decision pure means the
-/// keyboard model — the most regression-prone surface — is exhaustively unit-testable.
+/// panel state. The controller's window-level monitor routes navigation/action keys here regardless
+/// of focus, while printable keys and plain ⌫ return `.passThrough` and edit the focused field
+/// natively. Keeping the decision pure makes this regression-prone surface exhaustively unit-testable.
 enum PanelKeyIntent: Equatable {
     /// Don't intercept — let the focused search field handle it (printable keys, ⌫, ↑/↓, a space mid-search).
     case passThrough

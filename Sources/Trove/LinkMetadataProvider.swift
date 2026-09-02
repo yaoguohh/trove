@@ -6,6 +6,8 @@ struct LinkMetadata: Codable, Equatable {
     var url: String
     var title: String?
     var host: String
+    /// Final response port, when explicit. Optional so metadata cached by older releases still decodes.
+    var port: Int? = nil
     var iconFileName: String?
 
     var iconFileURL: URL? {
@@ -156,6 +158,7 @@ final class LinkMetadataProvider {
                 url: url.absoluteString,
                 title: title.map(decodeHTMLEntities),
                 host: baseURL.host() ?? url.host() ?? url.absoluteString,
+                port: baseURL.port,
                 iconFileName: iconFileName
             )
         } catch {
@@ -164,7 +167,13 @@ final class LinkMetadataProvider {
     }
 
     private nonisolated static func fallbackMetadata(for url: URL) -> LinkMetadata {
-        LinkMetadata(url: url.absoluteString, title: nil, host: url.host() ?? url.absoluteString, iconFileName: nil)
+        LinkMetadata(
+            url: url.absoluteString,
+            title: nil,
+            host: url.host() ?? url.absoluteString,
+            port: url.port,
+            iconFileName: nil
+        )
     }
 
     private nonisolated static func iconCandidates(in html: String, baseURL: URL) -> [URL] {
