@@ -6,8 +6,6 @@ struct HistorySearchField: View {
     var isActive: Bool
     /// The shared single focus authority (see PanelFocus). This field is `.search`.
     var focus: FocusState<PanelFocus?>.Binding
-    /// Routes a key press to the controller; returns true when it was intercepted (`.handled`).
-    let handleKey: (KeyEquivalent, EventModifiers) -> Bool
     let activate: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -28,11 +26,9 @@ struct HistorySearchField: View {
                     .font(.system(size: 13, weight: .semibold))
                     .frame(width: 150) // fixed width: animating it shifted the pinboards and made clicks miss
                     .focused(focus, equals: .search)
-                    // Navigation/action keys are intercepted here and routed to the card selection
-                    // (.handled); printable keys and ⌫ return .ignored and edit the search natively.
-                    .onKeyPress { press in
-                        handleKey(press.key, press.modifiers) ? .handled : .ignored
-                    }
+                    // Navigation/action keys are intercepted at the window level (the controller's
+                    // keyDown monitor → PanelKeyboard), so they work even if this field loses focus;
+                    // this field just edits the search text for the printable keys that fall through.
                     .onChange(of: query) {
                         activate()
                     }

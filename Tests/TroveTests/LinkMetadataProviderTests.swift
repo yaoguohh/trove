@@ -1,5 +1,15 @@
+import Foundation
 import Testing
 @testable import Trove
+
+struct LinkMetadataMigrationTests {
+    @Test func legacyCacheWithoutPortStillDecodes() throws {
+        let data = Data(#"{"url":"https://example.com","title":"Example","host":"example.com","iconFileName":null}"#.utf8)
+        let metadata = try JSONDecoder().decode(LinkMetadata.self, from: data)
+        #expect(metadata.host == "example.com")
+        #expect(metadata.port == nil)
+    }
+}
 
 struct HTMLEntityDecodingTests {
     @Test func decodesNamedEntities() {

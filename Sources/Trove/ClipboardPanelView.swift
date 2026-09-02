@@ -8,9 +8,6 @@ struct ClipboardPanelView: View {
     let close: () -> Void
     let reopen: () -> Void
     let preview: (ClipboardItem) -> Void
-    /// Routes a key press to the controller (returns true when intercepted). Driven by the search
-    /// field's onKeyPress.
-    let handleKey: (KeyEquivalent, EventModifiers) -> Bool
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var hoveredID: ClipboardItem.ID?
@@ -66,8 +63,13 @@ struct ClipboardPanelView: View {
             focus = .search
         }
         .onChange(of: model.showToken) {
-            // Every (re)show focuses the search field: typing filters immediately (no lost first
-            // char) and ←/→ navigate the cards via the field's onKeyPress interception.
+            // Every (re)show focuses the search field so printable input filters immediately without
+            // losing its first character; navigation/action keys use the controller's window monitor.
+            focus = .search
+        }
+        .onChange(of: model.refocusToken) {
+            // Re-claim focus after an in-place churn (e.g. deleting a card) that dropped it, so
+            // printable input keeps editing the query without requiring a re-summon.
             focus = .search
         }
         .onChange(of: focus) {
@@ -112,7 +114,6 @@ struct ClipboardPanelView: View {
                 query: $model.query,
                 isActive: focus == .search,
                 focus: $focus,
-                handleKey: handleKey,
                 activate: {
                     model.filter.scope = .history
                     model.filter.pinboardID = nil

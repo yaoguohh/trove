@@ -33,21 +33,48 @@ struct LinkPreview: View {
 
     @State private var metadata: LinkMetadata?
 
+    /// Pure derivation of the hero / route / host strings (see `LinkCardText`). Recomputes when the
+    /// async `metadata` lands, which only enriches the hero + favicon — the route line is identical
+    /// in both states, so the card never reflows when the title arrives.
+    private var cardText: LinkCardText {
+        LinkCardText.make(rawURL: item.text, metadata: metadata)
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let text = cardText
+        VStack(alignment: .leading, spacing: 8) {
+            // Site icon + hero: the fetched page title, else the smart path-tail, else the host.
             HStack(alignment: .top, spacing: 8) {
                 LinkSiteIcon(metadata: metadata, accent: accent, size: metrics.iconSize * 0.72)
-                HighlightedText(text: displayTitle, query: searchQuery)
+                HighlightedText(text: text.primary, query: searchQuery)
                     .font(.system(size: metrics.titleSize + 1, weight: .semibold))
                     .lineLimit(2)
+                    .truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Spacer()
+
+            // The always-on route line — what tells two same-host links apart. Shown as a full URL
+            // (host + path) so it reads as a real link rather than a stray "/path". Head-truncated so
+            // the distinguishing tail ("…/issues/1234") stays visible; gets a second line when no title
+            // competes for the card's height. Omitted entirely for a root URL (nothing more to show).
+            if let route = text.route {
+                HighlightedText(text: text.host + route, query: searchQuery)
+                    .font(.system(size: metrics.footerSize, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(text.primaryIsTitle ? 1 : 2)
+                    .truncationMode(.head)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .padding(.top, 1)
+            }
+
+            Spacer(minLength: 0)
+
             VStack(alignment: .leading, spacing: 4) {
-                HighlightedText(text: displayHost, query: searchQuery)
+                HighlightedText(text: text.host, query: searchQuery)
                     .font(.system(size: metrics.footerSize))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .truncationMode(.tail)
             }
             .padding(.top, 12)
             .overlay(alignment: .top) {
@@ -59,14 +86,6 @@ struct LinkPreview: View {
         .task(id: item.text) {
             metadata = await LinkMetadataProvider.shared.metadata(for: item.text)
         }
-    }
-
-    private var displayTitle: String {
-        metadata?.title ?? metadata?.host ?? URL(string: item.text)?.host() ?? item.displayTitle
-    }
-
-    private var displayHost: String {
-        metadata?.host ?? URL(string: item.text)?.host() ?? item.text
     }
 }
 

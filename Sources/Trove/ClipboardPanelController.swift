@@ -14,6 +14,9 @@ final class ClipboardPanelController {
     // Global mouse monitor (app-lifetime; the [weak self] closure keeps it from retaining the
     // controller) — the click-outside escape hatch for when the panel never became key.
     private var clickAwayMonitor: Any?
+    // Local keyDown monitor (app-lifetime) — the window-level key router, so navigation/action keys
+    // (and dismissal) never depend on the search field still holding SwiftUI focus.
+    private var keyMonitor: Any?
     private let model: PanelViewModel
     private lazy var previewController = PreviewWindowController()
     private lazy var quickLook = QuickLookBubbleController()
@@ -66,15 +69,14 @@ final class ClipboardPanelController {
         // click-away monitor or the hotkey — pasting itself never depended on the panel being key.
         panel.orderFrontRegardless()
         panel.makeKey()
-        // Fresh state on every (re)show. The SwiftUI view focuses the search field (on showToken),
-        // so typing filters immediately with no lost first character, and ←/→ navigate the cards via
-        // the field's onKeyPress interception.
+        // Fresh state on every (re)show. The SwiftUI view focuses the search field (on showToken) so
+        // typing filters immediately; navigation/action keys route through the window-level monitor.
         model.prepareForShow()
     }
 
     /// `animated: false` (default) hides instantly — required during a drag (the
     /// event-tracking run loop defers display updates) and for paste (must be snappy).
-    /// `animated: true` plays a drawer-style collapse for plain dismissals (Esc / hotkey).
+    /// `animated: true` plays a quick opacity fade for plain dismissals (Esc / hotkey).
     func hide(animated: Bool = false) {
         // Any panel dismissal (paste, Esc, hotkey, focus loss, drag) also dismisses the peek bubble
         // — a single chokepoint so the bubble can never outlive the panel.
@@ -88,20 +90,20 @@ final class ClipboardPanelController {
             CATransaction.flush()
             return
         }
-        // A second animated dismissal while the 0.18s collapse is still running would read the
-        // half-collapsed frame as its startFrame and restore a wrong size/position on the next show.
+        // Re-entrancy guard: a second dismissal mid-fade would re-arm the completion and could order
+        // out a panel the user just re-summoned.
         guard !isHiding else { return }
         isHiding = true
 
-        // Drawer collapse: slide down + fade out, then order out.
-        let startFrame = panel.frame
-        var endFrame = startFrame
-        endFrame.origin.y -= startFrame.height
+        // A plain opacity fade — NOT a window-frame slide. Moving a panel backed by a `.behindWindow`
+        // NSVisualEffectView forces the window server to recompute the desktop blur for the new
+        // position on EVERY frame (and the old `display: true` forced a synchronous redraw too), which
+        // is exactly what made the dismissal stutter. With the window stationary the backdrop blur is
+        // cached and only the alpha animates, so the fade holds 60fps.
         NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.18
-            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            context.duration = 0.15
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panel.animator().alphaValue = 0
-            panel.animator().setFrame(endFrame, display: true)
         }, completionHandler: { [weak self] in
             // NSAnimationContext completion runs on the main thread.
             MainActor.assumeIsolated {
@@ -109,7 +111,6 @@ final class ClipboardPanelController {
                 guard let panel = self?.panel, panel.alphaValue < 0.5 else { return } // re-shown mid-animation
                 panel.orderOut(nil)
                 panel.alphaValue = 1
-                panel.setFrame(startFrame, display: false)
             }
         })
     }
@@ -121,8 +122,7 @@ final class ClipboardPanelController {
             model: model,
             close: { [weak self] in self?.hide() },
             reopen: { [weak self] in self?.show() },
-            preview: { [weak self] item in self?.showPreview(item) },
-            handleKey: { [weak self] key, modifiers in self?.handleKey(key, modifiers) ?? false }
+            preview: { [weak self] item in self?.showPreview(item) }
         )
         let hosting = ClickThroughHostingController(rootView: root)
         hostingController = hosting
@@ -237,6 +237,37 @@ final class ClipboardPanelController {
                 self.hide(animated: true)
             }
         }
+
+        // Route all panel keys here. Churning the timeline (e.g. deleting several cards) can silently
+        // drop the search field's SwiftUI focus; catching keyDown at the window level keeps navigation,
+        // actions, and dismissal routed through the same pure `handleKey` model regardless of focus.
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            // Extract Sendable primitives before the actor hop (NSEvent isn't Sendable); assumeIsolated
+            // returns a Bool, and the event is consumed (handled) or passed through here based on it.
+            let keyCode = event.keyCode
+            let modifierRaw = event.modifierFlags.rawValue
+            let characters = event.charactersIgnoringModifiers
+            let handled = MainActor.assumeIsolated { () -> Bool in
+                self?.routeKeyDown(keyCode: keyCode, modifierRaw: modifierRaw, characters: characters) ?? false
+            }
+            return handled ? nil : event
+        }
+    }
+
+    /// Window-level keyboard router. Intercepts navigation/action keys (←/→, ⌘←/⌘→, ⌦, ⌘⌫, Return,
+    /// Space, Esc, ⌘Z) via the pure `PanelKeyboard.intent` model and returns true to consume them, so
+    /// they keep working even if SwiftUI has dropped the search field's focus. Steps aside (returns
+    /// false → event falls through to the focused field) while a card is being renamed — that editor
+    /// owns its keys — or when the main panel isn't key. Printable keys / plain ⌫ decode to
+    /// `passThrough`, so they fall through to the field's native text editing; IME composition is
+    /// handled inside `handleKey` (false while marked text exists, so candidates aren't hijacked).
+    @MainActor
+    private func routeKeyDown(keyCode: UInt16, modifierRaw: UInt, characters: String?) -> Bool {
+        guard let panel, panel.isKeyWindow, model.renamingItemID == nil else { return false }
+        guard let decoded = PanelKeyEvent.decode(keyCode: keyCode, modifierRaw: modifierRaw, characters: characters) else {
+            return false
+        }
+        return handleKey(decoded.key, decoded.modifiers)
     }
 
     /// The display under the mouse, recomputed each show (the global hotkey can summon the
@@ -275,11 +306,11 @@ final class ClipboardPanelController {
         panel.setFrame(NSRect(origin: origin, size: NSSize(width: width, height: height)), display: true)
     }
 
-    /// Keyboard routing. Called from the search field's `onKeyPress` (the field is always the
-    /// focused field, so this only runs while the panel — not a preview or a rename editor — owns
-    /// the keyboard). Returns true to intercept the key (SwiftUI treats it as `.handled`), false to
-    /// let it fall through and edit the search text. The decision is the pure, unit-tested
-    /// `PanelKeyboard.intent`; this only applies the side effects.
+    /// Keyboard routing. Called from `routeKeyDown` (the window-level keyDown monitor), so it runs
+    /// regardless of whether the search field still holds SwiftUI focus. Returns true to intercept the
+    /// key (the monitor then consumes it), false to let it fall through to the focused field's native
+    /// text editing. The decision is the pure, unit-tested `PanelKeyboard.intent`; this only applies the
+    /// side effects.
     func handleKey(_ key: KeyEquivalent, _ modifiers: EventModifiers) -> Bool {
         guard let panel, panel.isVisible else { return false }
         // While an input method is composing (Chinese/Japanese/…), Space/Return/arrows/Esc belong to
@@ -359,6 +390,9 @@ final class ClipboardPanelController {
         store.delete(item)
         let remaining = model.filteredItems
         model.selectedID = remaining.isEmpty ? nil : remaining[min(index, remaining.count - 1)].id
+        // Deleting can make SwiftUI drop the search field's focus; re-claim it so printable input
+        // keeps editing the query. Navigation/action keys remain available through the window monitor.
+        model.requestSearchFocus()
     }
 
     /// Roughly how many cards are visible across the panel — the page size for ⌘←/⌘→. Derived from
@@ -385,8 +419,8 @@ final class ClipboardPanelController {
     }
 }
 
-/// A borderless panel that can still become key so the hosted SwiftUI search field can focus and
-/// receive keyboard input; navigation/action keys are intercepted by the field's `.onKeyPress`.
+/// A borderless panel that can still become key so the hosted SwiftUI search field receives text;
+/// navigation/action keys are intercepted by the controller's window-level event monitor.
 private final class TrovePanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
