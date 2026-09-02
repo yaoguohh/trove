@@ -73,6 +73,11 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
   <string>0.1.0</string>
   <key>CFBundleVersion</key>
   <string>1</string>
+  <!-- Launch Services must classify Trove as a menu-bar agent before the executable starts;
+       setting .accessory only after launch can briefly flash a Dock icon. The app can still
+       switch to .regular at runtime when the user turns off “Run in Background”. -->
+  <key>LSUIElement</key>
+  <true/>
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
   <key>NSHumanReadableCopyright</key>
