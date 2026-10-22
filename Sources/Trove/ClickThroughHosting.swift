@@ -6,6 +6,18 @@ import SwiftUI
 /// otherwise consumed making the window key instead of being dispatched to the
 /// content, which made the first card drag do nothing (you had to click/drag twice).
 final class ClickThroughHostingController<Content: View>: NSHostingController<Content> {
+    override init(rootView: Content) {
+        super.init(rootView: rootView)
+        // The panel owns its dimensions. Unmounting its root must not replace the
+        // window's size constraints with the empty view's zero-size constraints.
+        sizingOptions = []
+        (view as? NSHostingView<Content>)?.sizingOptions = []
+    }
+
+    @MainActor required dynamic init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
     override func loadView() {
         view = ClickThroughHostingView(rootView: rootView)
     }
