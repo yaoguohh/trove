@@ -7,7 +7,7 @@ final class ClipboardPanelController {
     private let store: ClipboardStore
     private let monitor: ClipboardMonitor
     private var panel: NSPanel?
-    private var hostingController: NSHostingController<ClipboardPanelView>?
+    private var hostingController: NSHostingController<ClipboardPanelView?>?
     // App-lifetime observer (the controller is held by AppDelegate for the whole run), so it never
     // needs explicit removal; the [weak self] closure keeps it from retaining the controller.
     private var appActivationObserver: NSObjectProtocol?
@@ -23,6 +23,7 @@ final class ClipboardPanelController {
     /// True while the animated drawer-collapse hide is in flight, so a second dismissal can't re-enter
     /// it and capture the half-collapsed frame as its startFrame.
     private var isHiding = false
+    private var visibilityGeneration = 0
 
     /// Panel corner radius. The glass mask (AppKit) and the content clip (SwiftUI) must use
     /// the same value — keep `ClipboardPanelView`'s 16pt corners in sync with this.
@@ -51,8 +52,16 @@ final class ClipboardPanelController {
             createPanel()
         }
         guard let panel else { return }
+        visibilityGeneration += 1
         isHiding = false   // a re-summon cancels any in-flight collapse
-        panel.alphaValue = 1
+        if hostingController?.rootView == nil {
+            hostingController?.rootView = makeContent()
+        }
+        // Replace any pending fade, rather than only changing its current alpha.
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            panel.animator().alphaValue = 1
+        }
         position(panel)
         // The panel is a `.nonactivatingPanel`, so it becomes the KEY window and receives keyboard
         // WITHOUT activating Trove or stealing the frontmost app's active status — the idiomatic
@@ -82,11 +91,13 @@ final class ClipboardPanelController {
         // — a single chokepoint so the bubble can never outlive the panel.
         quickLook.hide()
         guard let panel, panel.isVisible, animated else {
+            visibilityGeneration += 1
             isHiding = false
             panel?.alphaValue = 0
             panel?.orderOut(nil)
-            // Force the visibility change to the window server this frame.
-            panel?.displayIfNeeded()
+            // orderOut alone leaves the SwiftUI graph alive and able to schedule layout.
+            hostingController?.rootView = nil
+            // Drag tracking may defer the normal display pass; flush ordering, not layout.
             CATransaction.flush()
             return
         }
@@ -94,6 +105,8 @@ final class ClipboardPanelController {
         // out a panel the user just re-summoned.
         guard !isHiding else { return }
         isHiding = true
+        visibilityGeneration += 1
+        let generation = visibilityGeneration
 
         // A plain opacity fade — NOT a window-frame slide. Moving a panel backed by a `.behindWindow`
         // NSVisualEffectView forces the window server to recompute the desktop blur for the new
@@ -107,16 +120,18 @@ final class ClipboardPanelController {
         }, completionHandler: { [weak self] in
             // NSAnimationContext completion runs on the main thread.
             MainActor.assumeIsolated {
-                self?.isHiding = false
-                guard let panel = self?.panel, panel.alphaValue < 0.5 else { return } // re-shown mid-animation
+                guard let self, self.visibilityGeneration == generation,
+                      let panel = self.panel else { return }
+                self.isHiding = false
                 panel.orderOut(nil)
+                self.hostingController?.rootView = nil
                 panel.alphaValue = 1
             }
         })
     }
 
-    private func createPanel() {
-        let root = ClipboardPanelView(
+    private func makeContent() -> ClipboardPanelView {
+        ClipboardPanelView(
             store: store,
             monitor: monitor,
             model: model,
@@ -124,7 +139,10 @@ final class ClipboardPanelController {
             reopen: { [weak self] in self?.show() },
             preview: { [weak self] item in self?.showPreview(item) }
         )
-        let hosting = ClickThroughHostingController(rootView: root)
+    }
+
+    private func createPanel() {
+        let hosting = ClickThroughHostingController(rootView: Optional(makeContent()))
         hostingController = hosting
         let panel = TrovePanel(
             // `.nonactivatingPanel` lets the borderless panel become key and take keyboard input without

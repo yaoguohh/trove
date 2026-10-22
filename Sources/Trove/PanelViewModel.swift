@@ -17,8 +17,8 @@ final class PanelViewModel: ObservableObject {
     /// Called (on the main actor) whenever the selection changes from any source — keyboard, hover,
     /// or programmatic — so the controller can keep an open Quick Look peek bubble re-fitted to it.
     var onSelectionChange: (() -> Void)?
-    /// Bumped on every panel (re)show so the view can re-focus the search field — the SwiftUI view
-    /// persists across orderOut/orderFront and `onAppear` fires only once.
+    /// Bumped on every panel (re)show to re-focus search, including a re-summon during
+    /// the fade when content is still mounted and `onAppear` does not run again.
     @Published private(set) var showToken = 0
     /// Bumped to re-assert search-field focus WITHOUT a full prepareForShow (which would also clear
     /// the query). Deleting a card can make SwiftUI drop focus; re-claiming it keeps printable input
