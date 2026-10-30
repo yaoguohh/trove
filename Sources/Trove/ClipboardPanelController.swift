@@ -57,11 +57,8 @@ final class ClipboardPanelController {
         if hostingController?.rootView == nil {
             hostingController?.rootView = makeContent()
         }
-        // Replace any pending fade, rather than only changing its current alpha.
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0
-            panel.animator().alphaValue = 1
-        }
+        // Start transparent; the fade-in below replaces any pending hide fade for the same property.
+        panel.alphaValue = 0
         position(panel)
         // The panel is a `.nonactivatingPanel`, so it becomes the KEY window and receives keyboard
         // WITHOUT activating Trove or stealing the frontmost app's active status — the idiomatic
@@ -78,6 +75,13 @@ final class ClipboardPanelController {
         // click-away monitor or the hotkey — pasting itself never depended on the panel being key.
         panel.orderFrontRegardless()
         panel.makeKey()
+        // Fade the STATIONARY window in on Tern's out curve (alpha on a stationary behind-window blur
+        // is cached and cheap; moving it is not). The content pops in on top — ClipboardPanelView.popIn.
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Theme.Motion.seconds(0.18)
+            context.timingFunction = Theme.Motion.outTiming
+            panel.animator().alphaValue = 1
+        }
         // Fresh state on every (re)show. The SwiftUI view focuses the search field (on showToken) so
         // typing filters immediately; navigation/action keys route through the window-level monitor.
         model.prepareForShow()
@@ -114,8 +118,8 @@ final class ClipboardPanelController {
         // is exactly what made the dismissal stutter. With the window stationary the backdrop blur is
         // cached and only the alpha animates, so the fade holds 60fps.
         NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.15
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            context.duration = Theme.Motion.seconds(0.15)
+            context.timingFunction = Theme.Motion.easeTiming
             panel.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
             // NSAnimationContext completion runs on the main thread.
@@ -161,13 +165,13 @@ final class ClipboardPanelController {
         containerView.wantsLayer = true
         containerView.layer?.backgroundColor = NSColor.clear.cgColor
 
-        // Adaptive glass that follows the app Appearance and HIDES background text the way the Dock
-        // does. The blur radius is ~constant across materials; what smears text into an unreadable
-        // wash is the material's baked-in fill density — so use the DENSEST materials, not the
-        // thinnest: .hudWindow (dark) / .menu (light). .underWindowBackground (used before) is the
-        // *thinnest*, which let background text read through. The material is chosen per effective
-        // appearance inside AdaptiveGlassView so it updates live when the user switches Light/Dark.
-        let glassView = AdaptiveGlassView(frame: .zero)
+        // Dense dark glass that HIDES background text the way the Dock does. The blur radius is
+        // ~constant across materials; what smears text into an unreadable wash is the material's
+        // baked-in fill density — so use the DENSEST dark material, .hudWindow, not the thin
+        // .underWindowBackground (which let background text read through). Trove is dark-only, so
+        // the material is fixed.
+        let glassView = NSVisualEffectView(frame: .zero)
+        glassView.material = .hudWindow
         glassView.blendingMode = .behindWindow
         glassView.state = .active
         // Denser, more saturated variant — extra text suppression at no transparency cost.
@@ -448,33 +452,6 @@ private final class TrovePanel: NSPanel {
     // `EditingShortcuts`.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         EditingShortcuts.route(event) || super.performKeyEquivalent(with: event)
-    }
-}
-
-/// An NSVisualEffectView that picks the densest text-hiding material for its current appearance
-/// (dark → .hudWindow, light → .menu) and re-picks when the appearance changes, so flipping the
-/// Appearance preference updates the glass live. The blur is ~constant across materials; the dense
-/// fill is what smears background window text into an unreadable wash (the Dock's behavior), which
-/// the thin .underWindowBackground could not do.
-private final class AdaptiveGlassView: NSVisualEffectView {
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        applyAdaptiveMaterial()
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        applyAdaptiveMaterial()
-    }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        applyAdaptiveMaterial()
-    }
-
-    private func applyAdaptiveMaterial() {
-        let isDark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        material = isDark ? .hudWindow : .menu
     }
 }
 

@@ -9,7 +9,6 @@ struct ClipboardPanelView: View {
     let reopen: () -> Void
     let preview: (ClipboardItem) -> Void
 
-    @Environment(\.colorScheme) private var colorScheme
     @State private var hoveredID: ClipboardItem.ID?
     @State private var suppressHoverScroll = false
     // Last real pointer location (global). Hover only moves the selection when this changes, so a
@@ -41,16 +40,27 @@ struct ClipboardPanelView: View {
             timeline
                 .zIndex(2)
         }
+        // Tern's popIn on the CONTENT only (scale 0.97 + a 4pt rise): the glass behind it is an AppKit
+        // behind-window blur that must never be transformed per frame, so the window just fades in
+        // (ClipboardPanelController.show) while the content arrives on top of it.
+        .popIn(trigger: model.showToken, duration: 0.18, nudge: 4)
         .frame(minWidth: 720, minHeight: 240)
         .background {
             // 16pt corners must match the glass mask in ClipboardPanelController.cornerRadius.
-            // No fill tint and no top sheen — the user asked to strip the residual white so the
-            // chrome is as see-through as possible; just the material plus a hairline edge.
+            // No fill tint: the chrome is the material alone plus an l2 hairline and a one-pixel
+            // glass-hi along the top (stopping short of the corner arcs).
             RoundedRectangle(cornerRadius: ClipboardPanelController.cornerRadius, style: .continuous)
                 .fill(panelOverlay)
                 .overlay {
                     RoundedRectangle(cornerRadius: ClipboardPanelController.cornerRadius, style: .continuous)
-                        .stroke(colorScheme == .dark ? Color.white.opacity(0.18) : Color.black.opacity(0.10), lineWidth: 1)
+                        .strokeBorder(Theme.Line.l2, lineWidth: 1)
+                }
+                .overlay(alignment: .top) {
+                    Rectangle()
+                        .fill(Theme.Line.glassHi)
+                        .frame(height: 1)
+                        .padding(.horizontal, ClipboardPanelController.cornerRadius)
+                        .padding(.top, 1)
                 }
         }
         .clipShape(RoundedRectangle(cornerRadius: ClipboardPanelController.cornerRadius, style: .continuous))
@@ -105,8 +115,8 @@ struct ClipboardPanelView: View {
                     .frame(width: 30, height: Self.toolbarItemHeight)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
+            .buttonStyle(.pressable)
+            .foregroundStyle(Theme.Text.t2)
 
             Spacer(minLength: 0)
 
@@ -135,8 +145,8 @@ struct ClipboardPanelView: View {
                     .frame(width: 30, height: Self.toolbarItemHeight)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.primary)
+            .buttonStyle(.pressable)
+            .foregroundStyle(Theme.Text.t1)
 
             Spacer(minLength: 0)
 
@@ -183,6 +193,7 @@ struct ClipboardPanelView: View {
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(Theme.Text.t2)
                 .frame(width: 36, height: Self.toolbarItemHeight)
                 .contentShape(Rectangle())
         }
@@ -257,11 +268,17 @@ struct ClipboardPanelView: View {
                                         }
                                     }
                                     .zIndex(hoveredID == item.id ? 20 : model.selectedID == item.id ? 10 : 0)
+                                    // Tern's card entrance/exit: fade + scale 0.97 + a 4pt rise, on the
+                                    // out curve (driven by the LazyHStack's animation(value:) below).
+                                    .transition(.asymmetric(
+                                        insertion: .opacity.combined(with: .scale(scale: 0.97)).combined(with: .offset(y: 4)),
+                                        removal: .opacity.combined(with: .scale(scale: 0.97))
+                                    ))
                                     .onContinuousHover(coordinateSpace: .global) { phase in
                                         switch phase {
                                         case .active(let location):
                                             if hoveredID != item.id {
-                                                withAnimation(.spring(response: 0.22, dampingFraction: 0.78)) {
+                                                withAnimation(Theme.Motion.out(0.2)) {
                                                     hoveredID = item.id
                                                 }
                                             }
@@ -279,7 +296,7 @@ struct ClipboardPanelView: View {
                                             lastHoverLocation = location
                                         case .ended:
                                             if hoveredID == item.id {
-                                                withAnimation(.spring(response: 0.22, dampingFraction: 0.78)) {
+                                                withAnimation(Theme.Motion.out(0.2)) {
                                                     hoveredID = nil
                                                 }
                                             }
@@ -293,6 +310,9 @@ struct ClipboardPanelView: View {
                             .padding(.horizontal, metrics.sidePadding)
                             .padding(.top, metrics.topPadding)
                             .padding(.bottom, metrics.bottomPadding)
+                            // Animate the row whenever its membership changes (a new clip, a delete, a
+                            // filter): neighbors slide to close the gap and the card transitions play.
+                            .animation(Theme.Motion.out(0.22), value: filteredItems.map(\.id))
                         }
                         .scrollClipDisabled()
                         .scrollIndicators(.hidden)
@@ -304,7 +324,7 @@ struct ClipboardPanelView: View {
                                 return
                             }
                             if let selectedID = model.selectedID {
-                                withAnimation(.snappy) {
+                                withAnimation(Theme.Motion.out(0.3)) {
                                     proxy.scrollTo(selectedID, anchor: .center)
                                 }
                             }
@@ -320,13 +340,15 @@ struct ClipboardPanelView: View {
         VStack(spacing: 12) {
             Image(systemName: "doc.on.clipboard")
                 .font(.system(size: 44))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Text.t3)
             Text("Nothing here yet")
                 .font(.headline)
+                .foregroundStyle(Theme.Text.t1)
             Text("Copy something and it will appear in this tray.")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Text.t2)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .popIn(duration: 0.32, fade: true, nudge: 6)
     }
 
     @ViewBuilder
@@ -433,12 +455,13 @@ struct ClipboardPanelView: View {
         } label: {
             Image(systemName: "square.and.pencil")
                 .font(.system(size: max(12, metrics.titleSize - 2), weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Text.t2)
                 .frame(width: 24, height: 24)
-                .background(.regularMaterial, in: Circle())
+                .background(Theme.Surface.raise, in: Circle())
+                .overlay { Circle().strokeBorder(Theme.Line.l2, lineWidth: 1) }
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable)
         .help(String(localized: "Rename"))
         .padding(.trailing, metrics.iconSize + 14)
         .padding(.top, max(4, (metrics.headerHeight - 24) / 2))
@@ -459,7 +482,6 @@ struct ClipboardPanelView: View {
             renameFocus: $focus
         )
         .frame(width: metrics.width, height: metrics.height)
-        .environment(\.colorScheme, colorScheme)
         let renderer = ImageRenderer(content: card)
         renderer.scale = NSScreen.main?.backingScaleFactor ?? 2
         return renderer.nsImage
@@ -517,14 +539,14 @@ struct ClipboardPanelView: View {
                 if draggingPinboardID != pinboard.id {
                     let midX = chipFrames[pinboard.id]?.midX ?? value.startLocation.x
                     dragGrabOffset = value.startLocation.x - midX
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.72)) {
+                    withAnimation(Theme.Motion.spring(response: 0.25, dampingFraction: 0.72)) {
                         draggingPinboardID = pinboard.id
                     }
                 }
                 dragCursorX = value.location.x
                 let newTarget = computePinboardTargetIndex(draggedID: pinboard.id, cursorX: value.location.x)
                 if newTarget != dragTargetIndex {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                    withAnimation(Theme.Motion.spring(response: 0.3, dampingFraction: 0.78)) {
                         dragTargetIndex = newTarget
                     }
                 }
@@ -562,7 +584,7 @@ struct ClipboardPanelView: View {
     private func finishPinboardDrag() {
         guard let id = draggingPinboardID else { return }
         let target = dragTargetIndex
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+        withAnimation(Theme.Motion.spring(response: 0.3, dampingFraction: 0.8)) {
             if let target { store.movePinboard(id, toIndex: target) }
             draggingPinboardID = nil
             dragTargetIndex = nil

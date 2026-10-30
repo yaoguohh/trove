@@ -11,6 +11,8 @@ struct ImagePreview: View {
                     .scaledToFit()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    // A hairline keeps a white-background image from reading as a hole in the card.
+                    .overlay { RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.Line.l2, lineWidth: 1) }
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: "photo")
@@ -18,7 +20,7 @@ struct ImagePreview: View {
                     Text("Image unavailable")
                         .font(.system(size: 13, weight: .semibold))
                 }
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Text.t3)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
@@ -32,6 +34,9 @@ struct LinkPreview: View {
     let metrics: CardMetrics
 
     @State private var metadata: LinkMetadata?
+    /// True once the metadata lookup has answered (with or without a title), so the shimmer that
+    /// marks the hero as "still loading" stops either way.
+    @State private var resolved = false
 
     /// Pure derivation of the hero / route / host strings (see `LinkCardText`). Recomputes when the
     /// async `metadata` lands, which only enriches the hero + favicon — the route line is identical
@@ -48,9 +53,15 @@ struct LinkPreview: View {
                 LinkSiteIcon(metadata: metadata, accent: accent, size: metrics.iconSize * 0.72)
                 HighlightedText(text: text.primary, query: searchQuery)
                     .font(.system(size: metrics.titleSize + 1, weight: .semibold))
+                    .foregroundStyle(Theme.Text.t1)
                     .lineLimit(2)
                     .truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    // Tern's working-state shimmer while the page title is still on its way; the
+                    // fetched title then cross-fades in instead of snapping.
+                    .shimmer(!resolved && LinkMetadataProvider.isAutoFetchEnabled)
+                    .contentTransition(.opacity)
+                    .animation(Theme.Motion.ease(0.2), value: metadata)
             }
 
             // The always-on route line — what tells two same-host links apart. Shown as a full URL
@@ -60,7 +71,7 @@ struct LinkPreview: View {
             if let route = text.route {
                 HighlightedText(text: text.host + route, query: searchQuery)
                     .font(.system(size: metrics.footerSize, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Text.t2)
                     .lineLimit(text.primaryIsTitle ? 1 : 2)
                     .truncationMode(.head)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -72,7 +83,7 @@ struct LinkPreview: View {
             VStack(alignment: .leading, spacing: 4) {
                 HighlightedText(text: text.host, query: searchQuery)
                     .font(.system(size: metrics.footerSize))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Text.t3)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
@@ -85,6 +96,7 @@ struct LinkPreview: View {
         }
         .task(id: item.text) {
             metadata = await LinkMetadataProvider.shared.metadata(for: item.text)
+            resolved = true
         }
     }
 }
@@ -145,7 +157,7 @@ struct HighlightedText: View {
         while let match = lowerText.range(of: lowerNeedle, range: searchRange) {
             if let start = AttributedString.Index(match.lowerBound, within: attributed),
                let end = AttributedString.Index(match.upperBound, within: attributed) {
-                attributed[start..<end].backgroundColor = .yellow.opacity(0.55)
+                attributed[start..<end].backgroundColor = Theme.Accent.highlight
             }
 
             guard match.upperBound < lowerText.endIndex else { break }

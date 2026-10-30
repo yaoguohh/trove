@@ -36,7 +36,9 @@ struct CardMetrics {
         footerHeight = min(32, max(26, height * 0.13))
         contentHeight = max(72, height - headerHeight - footerHeight)
         iconSize = min(44, max(36, headerHeight * 0.92))
-        cornerRadius = min(20, max(15, height * 0.055))
+        // Fixed radius (Theme.Radius.card): nothing scales its radius with its size, so cards and the
+        // panel (16) stay in one family at every display size.
+        cornerRadius = Theme.Radius.card
         sidePadding = min(28, max(16, containerSize.width * 0.015))
         spacing = min(22, max(14, width * 0.06))
         titleSize = min(16, max(14, height * 0.048))
