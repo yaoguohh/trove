@@ -21,12 +21,13 @@ struct PanelHostingTests {
         #expect(hosting.rootView == nil)
         try await Task.sleep(for: .milliseconds(100))
         controller.show()
-        try await Task.sleep(for: .milliseconds(100))
         #expect(controller.isVisible)
         #expect(hosting.rootView != nil)
         #expect((hosting.window?.frame.width ?? 0) >= 720)
         #expect((hosting.window?.frame.height ?? 0) >= 240)
-        #expect(hosting.window?.firstResponder is NSTextView)
+        // SwiftUI hands the search field focus a few run-loop turns after the show; a fixed 100ms was
+        // enough locally and flaky on a loaded CI runner, so wait for the condition instead.
+        #expect(await eventually { hosting.window?.firstResponder is NSTextView })
         controller.hide(animated: true)
         try await Task.sleep(for: .milliseconds(350))
         #expect(!controller.isVisible)
@@ -47,6 +48,16 @@ struct PanelHostingTests {
         #expect(controller.isVisible)
         #expect(hosting.rootView != nil)
         #expect(hosting.window?.alphaValue == 1)
+    }
+
+    /// Polls `condition` every 50ms until it holds or `timeout` passes; returns its final value.
+    private func eventually(timeout: Duration = .seconds(3), _ condition: @MainActor () -> Bool) async -> Bool {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if condition() { return true }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return condition()
     }
 
     private func hostingView() -> NSHostingView<ClipboardPanelView?>? {
