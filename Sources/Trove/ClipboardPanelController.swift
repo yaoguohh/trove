@@ -101,6 +101,7 @@ final class ClipboardPanelController {
             panel?.orderOut(nil)
             // orderOut alone leaves the SwiftUI graph alive and able to schedule layout.
             hostingController?.rootView = nil
+            ImageCache.purgeFullImages()
             // Drag tracking may defer the normal display pass; flush ordering, not layout.
             CATransaction.flush()
             return
@@ -129,6 +130,8 @@ final class ClipboardPanelController {
                 self.isHiding = false
                 panel.orderOut(nil)
                 self.hostingController?.rootView = nil
+                // Full-size decodes (peek / inspect / drag) are only needed while the panel is up.
+                ImageCache.purgeFullImages()
                 panel.alphaValue = 1
             }
         })
@@ -157,47 +160,7 @@ final class ClipboardPanelController {
             backing: .buffered,
             defer: false
         )
-        hosting.view.wantsLayer = true
-        hosting.view.layer?.backgroundColor = NSColor.clear.cgColor
-        hosting.view.translatesAutoresizingMaskIntoConstraints = false
-
-        let containerView = NSView()
-        containerView.wantsLayer = true
-        containerView.layer?.backgroundColor = NSColor.clear.cgColor
-
-        // Dense dark glass that HIDES background text the way the Dock does. The blur radius is
-        // ~constant across materials; what smears text into an unreadable wash is the material's
-        // baked-in fill density — so use the DENSEST dark material, .hudWindow, not the thin
-        // .underWindowBackground (which let background text read through). Trove is dark-only, so
-        // the material is fixed.
-        let glassView = NSVisualEffectView(frame: .zero)
-        glassView.material = .hudWindow
-        glassView.blendingMode = .behindWindow
-        glassView.state = .active
-        // Denser, more saturated variant — extra text suppression at no transparency cost.
-        glassView.isEmphasized = true
-        // Full opacity is intentional: translucency must come from the material's heavy BLUR, not
-        // from alpha. Lowering alpha lets the raw, un-blurred desktop bleed through — so background
-        // window TEXT shows through legibly (what you saw). At alpha 1.0 the blur smears that text
-        // into an unreadable wash (the Dock's trick) while a plain desktop still shows through.
-        glassView.alphaValue = 1.0
-        glassView.wantsLayer = true
-        // maskImage clips the live blur to the rounded rect cleanly; cornerRadius + masksToBounds
-        // leaves faint blur fringing at the corners. capInsets stretch the mask to any size.
-        glassView.maskImage = .roundedMask(cornerRadius: Self.cornerRadius)
-        glassView.translatesAutoresizingMaskIntoConstraints = false
-        containerView.addSubview(glassView)
-        containerView.addSubview(hosting.view)
-        NSLayoutConstraint.activate([
-            glassView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            glassView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            glassView.topAnchor.constraint(equalTo: containerView.topAnchor),
-            glassView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-            hosting.view.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            hosting.view.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            hosting.view.topAnchor.constraint(equalTo: containerView.topAnchor),
-            hosting.view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
-        ])
+        let containerView = PanelChrome.makeGlassContainer(content: hosting.view, cornerRadius: Self.cornerRadius)
 
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
@@ -440,35 +403,3 @@ final class ClipboardPanelController {
         }
     }
 }
-
-/// A borderless panel that can still become key so the hosted SwiftUI search field receives text;
-/// navigation/action keys are intercepted by the controller's window-level event monitor.
-private final class TrovePanel: NSPanel {
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
-
-    // No main-menu Edit menu (menu-bar app), so route ⌘C/⌘X/⌘V/⌘A into the search field here. Only a
-    // bare ⌘+letter is taken, so ⌘←/⌘→/⌘⌫/⌘Z still reach `handleKey`'s keyboard model. See
-    // `EditingShortcuts`.
-    override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        EditingShortcuts.route(event) || super.performKeyEquivalent(with: event)
-    }
-}
-
-private extension NSImage {
-    /// A black rounded-rect mask whose corners are protected by cap insets, so assigning it to
-    /// `NSVisualEffectView.maskImage` (resizingMode `.stretch`) rounds the blur at any panel
-    /// size without distorting the corner arcs.
-    static func roundedMask(cornerRadius radius: CGFloat) -> NSImage {
-        let diameter = radius * 2 + 1
-        let image = NSImage(size: NSSize(width: diameter, height: diameter), flipped: false) { rect in
-            NSColor.black.setFill()
-            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
-            return true
-        }
-        image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
-        image.resizingMode = .stretch
-        return image
-    }
-}
-
