@@ -23,7 +23,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let runInBackgroundKey = "Trove.runInBackground"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        AppearanceManager.apply()
+        // Dark-only by design: the panel is a Dock/HUD-class floating surface, and every color in the
+        // app is a single anthracite token (see Theme). Pinning the appearance app-wide keeps the
+        // inspect window, menus and alerts on the same side.
+        NSApp.appearance = NSAppearance(named: .darkAqua)
         applyActivationPolicy()
         let clipboardMonitor = ClipboardMonitor(store: store)
         monitor = clipboardMonitor
@@ -139,7 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.isReleasedWhenClosed = false
         panel.isRestorable = false
         panel.hidesOnDeactivate = false           // we dismiss explicitly via the resign-active observer
-        panel.animationBehavior = .utilityWindow
+        panel.animationBehavior = .none           // we fade it in ourselves (below); dismissal is instant
 
         // Drop straight down from the icon, centered on it, clamped fully on-screen.
         let iconFrame = iconWindow.frame
@@ -152,7 +155,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Activate so the buttons are clickable and Esc (the view's onExitCommand) reaches a key window.
         NSApp.activate(ignoringOtherApps: true)
+        // Tern's popIn: the window fades on the out curve while the content (StatusMenuView.popIn)
+        // scales from 0.97 and drops 3pt into place. Only alpha is animated at the window level so the
+        // behind-window blur is never recomputed per frame.
+        panel.alphaValue = 0
         panel.makeKeyAndOrderFront(nil)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Theme.Motion.seconds(0.18)
+            context.timingFunction = Theme.Motion.outTiming
+            panel.animator().alphaValue = 1
+        }
 
         statusMenuMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             self?.closeStatusMenu()

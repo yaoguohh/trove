@@ -23,8 +23,8 @@ natively in Swift / AppKit + SwiftUI.
 - Handles huge clips gracefully — display & search stay snappy, large content spills to sidecar files
 - **Rename** any clip inline in its header (the name is searchable too)
 - Pinboards with custom colors and home-screen-style drag-to-reorder
-- Dock-style translucent glass panel; light/dark right from the menu-bar menu
-- Right-click the menu-bar icon for a compact menu — appearance, shortcut, link previews, and background mode, all inline (no separate Preferences window)
+- Dock-style translucent glass panel in a single dark "anthracite" palette — one accent, four surface tiers, hairline edges
+- Right-click the menu-bar icon for a compact menu — shortcut, link previews, and background mode, all inline (no separate Preferences window)
 - Link title + favicon previews with local metadata caching
 - In-app auto-updates via [Sparkle](https://sparkle-project.org)
 - Local JSON storage in `~/Library/Application Support/Trove/`

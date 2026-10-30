@@ -32,6 +32,7 @@ struct SelectableText: NSViewRepresentable {
             textView.isHorizontallyResizable = false
             textView.textContainer?.widthTracksTextView = true
             textView.font = font
+            textView.textColor = NSColor(hex: 0xD4D8E4)   // Theme.Text.t1
             textView.string = text
         }
         return scroll
@@ -74,7 +75,7 @@ struct JSONPreviewView: View {
                 font: .monospacedSystemFont(ofSize: 12.5, weight: .regular)
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(nsColor: .textBackgroundColor))
+            .background(Theme.Surface.coal)
         }
     }
 }
@@ -99,13 +100,13 @@ struct BoundedPlainText: View {
             SelectableText(text: bounded.text)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(Theme.Surface.coal)
     }
 
     private func notice(_ key: String.LocalizationValue) -> some View {
         Text(String(localized: key))
             .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.Text.t2)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 18)
             .padding(.top, 14)

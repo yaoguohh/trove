@@ -73,7 +73,7 @@ struct ClipCard: View {
             } else {
                 HighlightedText(text: item.preview, query: searchQuery)
                     .font(.system(size: metrics.bodySize, weight: .medium))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Theme.Text.t1)
                     .lineLimit(contentLineLimit)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             }
@@ -89,8 +89,6 @@ struct ClipCard: View {
 }
 
 private struct ClipCardChrome<Header: View, Content: View, Footer: View>: View {
-    @Environment(\.colorScheme) private var colorScheme
-
     let header: Header
     let content: Content
     let footer: Footer
@@ -114,7 +112,13 @@ private struct ClipCardChrome<Header: View, Content: View, Footer: View>: View {
         self.metrics = metrics
     }
 
+    /// Selection = one step up the surface ladder + a 1.5pt accent hairline + a soft 18% outer ring
+    /// (Tern's focus ring), instead of a thick system-blue stroke. (Computed: a generic type can't
+    /// hold a static stored property.)
+    private var ringWidth: CGFloat { 4 }
+
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: metrics.cornerRadius, style: .continuous)
         VStack(spacing: 0) {
             header
                 .frame(height: metrics.headerHeight)
@@ -125,38 +129,34 @@ private struct ClipCardChrome<Header: View, Content: View, Footer: View>: View {
                 .frame(height: metrics.footerHeight)
         }
         .frame(width: metrics.width, height: metrics.height)
-        .background(cardBackground, in: RoundedRectangle(cornerRadius: metrics.cornerRadius, style: .continuous))
-        .clipShape(RoundedRectangle(cornerRadius: metrics.cornerRadius, style: .continuous))
+        // Opaque: the chrome is highly translucent (Dock-style), so a card must completely occlude the
+        // blurred desktop beneath it for crisp, readable content. Only the surrounding chrome is glass.
+        .background(isSelected ? Theme.Surface.raise : Theme.Surface.card, in: shape)
+        .clipShape(shape)
         .overlay {
-            RoundedRectangle(cornerRadius: metrics.cornerRadius, style: .continuous)
-                .stroke(isSelected ? Color.blue : cardStroke, lineWidth: isSelected ? 4 : 1)
+            // Hairline (l2) at rest; the accent hairline when selected.
+            shape.strokeBorder(isSelected ? Theme.accent : Theme.Line.l2, lineWidth: isSelected ? 1.5 : 1)
+        }
+        .overlay {
+            // Outer ring sits fully outside the card edge: the overlay is inflated by half the ring
+            // width so a centered stroke spans exactly [edge, edge + ringWidth].
+            RoundedRectangle(cornerRadius: metrics.cornerRadius + ringWidth / 2, style: .continuous)
+                .stroke(Theme.Accent.ring, lineWidth: ringWidth)
+                .padding(-ringWidth / 2)
+                .opacity(isSelected ? 1 : 0)
         }
         .shadow(
-            color: .black.opacity(isHovered || isSelected ? 0.18 : 0.06),
-            radius: isHovered || isSelected ? 16 : 6,
+            color: .black.opacity(isHovered || isSelected ? 0.26 : 0.14),
+            radius: isHovered || isSelected ? 18 : 8,
             x: 0,
             y: isHovered || isSelected ? 8 : 4
         )
-        .animation(.spring(response: 0.22, dampingFraction: 0.80), value: isHovered)
-    }
-
-    private var cardBackground: Color {
-        // Fully opaque: the chrome is highly translucent (Dock-style), so a card must completely
-        // occlude the blurred desktop beneath it for crisp, readable content. Only the
-        // surrounding chrome is glass; the cards carry their own contrast.
-        colorScheme == .dark
-            ? Color(red: 0.13, green: 0.13, blue: 0.15)
-            : Color.white
-    }
-
-    private var cardStroke: Color {
-        colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.08)
+        .animation(Theme.Motion.out(0.2), value: isHovered)
+        .animation(Theme.Motion.out(0.2), value: isSelected)
     }
 }
 
 private struct ClipCardHeader: View {
-    @Environment(\.colorScheme) private var colorScheme
-
     let item: ClipboardItem
     let sourceStyle: SourceAppStyle
     let accentPalette: [Color]
@@ -180,8 +180,9 @@ private struct ClipCardHeader: View {
                     )
                 )
                 .overlay(alignment: .top) {
+                    // glass-hi: the one-pixel top highlight every raised surface gets.
                     Rectangle()
-                        .fill(Color.white.opacity(colorScheme == .dark ? 0.10 : 0.36))
+                        .fill(Theme.Line.glassHi)
                         .frame(height: 1)
                 }
 
@@ -189,7 +190,7 @@ private struct ClipCardHeader: View {
                 if item.isPinned {
                     Image(systemName: "pin.fill")
                         .font(.system(size: max(10, metrics.titleSize - 3), weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Text.t2)
                         .rotationEffect(.degrees(45))
                 }
                 if isRenaming {
@@ -199,7 +200,7 @@ private struct ClipCardHeader: View {
                     TextField("", text: renameText, prompt: Text(item.kind.title))
                         .textFieldStyle(.plain)
                         .font(titleFont)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(Theme.Text.t1)
                         .focused(renameFocus, equals: .rename(item.id))
                         .onSubmit(onCommit)
                         .onExitCommand(perform: onCancel) // Esc cancels
@@ -208,7 +209,7 @@ private struct ClipCardHeader: View {
                     // the source icon. Untitled clips fall back to the kind ("Text", …).
                     Text(item.title ?? item.kind.title)
                         .font(titleFont)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(Theme.Text.t1)
                 }
             }
             .lineLimit(1)
@@ -225,10 +226,12 @@ private struct ClipCardHeader: View {
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: metrics.cornerRadius, topTrailingRadius: metrics.cornerRadius))
     }
 
+    /// The source app's own hues, kept as Trove's one multi-hue element (it identifies the card's
+    /// origin at a glance) but calmed from 26/12/3% to 18/8/0% so the ember accent stays in charge.
     private var gradientColors: [Color] {
-        let topOpacity = colorScheme == .dark ? 0.26 : 0.16
-        let midOpacity = colorScheme == .dark ? 0.12 : 0.07
-        let tailOpacity = colorScheme == .dark ? 0.03 : 0.00
+        let topOpacity = 0.18
+        let midOpacity = 0.08
+        let tailOpacity = 0.0
         let colors = Array(accentPalette.prefix(3))
 
         switch colors.count {
@@ -257,8 +260,6 @@ private struct ClipCardHeader: View {
 }
 
 private struct ClipCardFooter: View {
-    @Environment(\.colorScheme) private var colorScheme
-
     let createdAt: Date
     let pinboard: Pinboard?
     let characterCount: Int
@@ -271,27 +272,27 @@ private struct ClipCardFooter: View {
             // Relative time lives at the bottom-left now (moved out of the header).
             Text(createdAt, style: .relative)
                 .font(.system(size: metrics.footerSize, weight: .medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Text.t3)
                 .lineLimit(1)
             if let pinboard {
                 Text(pinboard.name)
-                    .footerChip(background: colorScheme == .dark ? .white.opacity(0.10) : .black.opacity(0.07), metrics: metrics)
+                    .footerChip(background: Theme.Line.l1, foreground: Theme.Text.t2, metrics: metrics)
             }
             if isTruncated {
                 // Only the rare ceiling-hit clip: honest signal that paste won't include the tail.
                 Text("Truncated")
-                    .footerChip(background: colorScheme == .dark ? .orange.opacity(0.22) : .orange.opacity(0.16), metrics: metrics)
+                    .footerChip(background: Theme.Semantic.warn.opacity(0.18), foreground: Theme.Semantic.warn, metrics: metrics)
                     .help(String(localized: "This clip was too large and was shortened; pasting will not include the full content."))
             }
             Spacer()
             Text("\(characterCount) characters")
                 .font(.system(size: metrics.footerSize, weight: .medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Text.t3)
                 .lineLimit(1)
                 .minimumScaleFactor(0.80)
             Text("\(index + 1)")
                 .font(.system(size: metrics.footerSize, weight: .medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Text.t3)
                 .lineLimit(1)
         }
         .padding(.horizontal, metrics.cornerRadius)
@@ -301,13 +302,16 @@ private struct ClipCardFooter: View {
 }
 
 private extension View {
-    func footerChip(background: Color, metrics: CardMetrics) -> some View {
+    /// A footer pill: l1 fill with an l2 hairline (never a border), text one tier up from the footer.
+    func footerChip(background: Color, foreground: Color, metrics: CardMetrics) -> some View {
         self
             .font(.system(size: metrics.footerSize, weight: .semibold))
+            .foregroundStyle(foreground)
             .lineLimit(1)
             .minimumScaleFactor(0.80)
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
             .background(background, in: Capsule())
+            .overlay { Capsule().strokeBorder(Theme.Line.l2, lineWidth: 1) }
     }
 }

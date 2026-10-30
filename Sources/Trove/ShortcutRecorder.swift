@@ -10,10 +10,11 @@ struct KeyCapView: View {
             .font(.system(size: 11.5, weight: .medium, design: .rounded))
             .frame(minWidth: 15, minHeight: 19)
             .padding(.horizontal, 3)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+            .foregroundStyle(Theme.Text.t1)
+            .background(Theme.Line.l1, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .strokeBorder(.primary.opacity(0.08), lineWidth: 0.5)
+                    .strokeBorder(Theme.Line.l2, lineWidth: 1)
             }
     }
 }
@@ -39,7 +40,7 @@ struct ShortcutRecorder: View {
                         if liveModifierSymbols.isEmpty {
                             Text("Recording…")
                                 .font(.system(size: 10.5, weight: .medium))
-                                .foregroundStyle(Color.accentColor)
+                                .foregroundStyle(Theme.accent)
                         } else {
                             ForEach(Array(liveModifierSymbols.enumerated()), id: \.offset) { _, symbol in
                                 KeyCapView(symbol: symbol)
@@ -57,12 +58,12 @@ struct ShortcutRecorder: View {
                 .padding(.horizontal, 5)
                 .overlay {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(isRecording ? Color.accentColor : Color.primary.opacity(0.14),
+                        .strokeBorder(isRecording ? Theme.accent : Theme.Line.l3,
                                       lineWidth: isRecording ? 1.5 : 1)
                 }
                 .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressable)
 
             // One trailing affordance: cancel while recording, otherwise reset to the default shortcut.
             Button {
@@ -70,11 +71,11 @@ struct ShortcutRecorder: View {
             } label: {
                 Image(systemName: isRecording ? "xmark.circle.fill" : "arrow.counterclockwise")
                     .font(.system(size: isRecording ? 12 : 11, weight: .medium))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Theme.Text.t3)
                     .frame(width: 18, height: 18)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressable)
             .help(isRecording ? String(localized: "Cancel") : String(localized: "Reset to default"))
         }
         .onDisappear {

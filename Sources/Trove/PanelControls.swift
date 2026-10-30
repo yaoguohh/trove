@@ -8,8 +8,6 @@ struct HistorySearchField: View {
     var focus: FocusState<PanelFocus?>.Binding
     let activate: () -> Void
 
-    @Environment(\.colorScheme) private var colorScheme
-
     var body: some View {
         HStack(spacing: 8) {
             // Baseline-align the magnifier with the field text so they sit level (centering
@@ -17,13 +15,14 @@ struct HistorySearchField: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.Text.t3)
 
                 // Placeholder always shows when empty; the field is always the text first
                 // responder so typing never loses its first character.
                 TextField("", text: $query, prompt: Text("Clipboard history"))
                     .textFieldStyle(.plain)
                     .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.Text.t1)
                     .frame(width: 150) // fixed width: animating it shifted the pinboards and made clicks miss
                     .focused(focus, equals: .search)
                     // Navigation/action keys are intercepted at the window level (the controller's
@@ -44,38 +43,26 @@ struct HistorySearchField: View {
                         .frame(width: 18, height: 18)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
+                .buttonStyle(.pressable)
+                .foregroundStyle(Theme.Text.t3)
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-        .background(searchBackground, in: Capsule())
+        // Flat fill + hairline from the line ladder (no Material, so the glass vibrancy can't tint
+        // it). Active = one step up the ladder; no accent ring — Tern drops the ring on text inputs,
+        // and this field is focused nearly all the time.
+        .background(isActive ? Theme.Line.l2 : Theme.Line.l1, in: Capsule())
         .overlay {
             Capsule()
-                .stroke(strokeColor, lineWidth: 1)
+                .strokeBorder(isActive ? Theme.Line.l3 : Theme.Line.l2, lineWidth: 1)
         }
+        .animation(Theme.Motion.ease, value: isActive)
         .contentShape(Capsule())
         .onTapGesture {
             focus.wrappedValue = .search
             activate()
         }
-    }
-
-    // Flat, monochrome fill/border (no Material, so the glass vibrancy can't tint it
-    // pink/purple); adaptive to light/dark, stronger while editing.
-    private var searchBackground: some ShapeStyle {
-        if colorScheme == .dark {
-            return AnyShapeStyle(Color.white.opacity(isActive ? 0.16 : 0.08))
-        }
-        return AnyShapeStyle(Color.black.opacity(isActive ? 0.08 : 0.04))
-    }
-
-    private var strokeColor: Color {
-        if colorScheme == .dark {
-            return Color.white.opacity(isActive ? 0.26 : 0.12)
-        }
-        return Color.black.opacity(isActive ? 0.22 : 0.10)
     }
 }
 
@@ -85,6 +72,8 @@ struct TopPinboardButton: View {
     let isSelected: Bool
     let action: () -> Void
 
+    @State private var hovering = false
+
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
@@ -93,14 +82,19 @@ struct TopPinboardButton: View {
                     .frame(width: 11, height: 11)
                 Text(pinboard.name)
                     .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(isSelected ? Theme.Text.t1 : Theme.Text.t2)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
-            .background(isSelected ? color.opacity(0.16) : Color.clear, in: Capsule())
+            // Selected: the pinboard's own color at 16% (Tern's selected-fill step); hover: l1.
+            .background(isSelected ? color.opacity(0.16) : hovering ? Theme.Line.l1 : Color.clear, in: Capsule())
             // Without this the padding around the label isn't tappable (.plain buttons
             // only hit the text/icon), which made the pill feel unclickable at its edges.
             .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable)
+        .onHover { hovering = $0 }
+        .animation(Theme.Motion.ease, value: hovering)
+        .animation(Theme.Motion.ease, value: isSelected)
     }
 }

@@ -11,6 +11,8 @@ import SwiftUI
 @MainActor
 final class QuickLookBubbleController {
     private var window: NSPanel?
+    /// Bumped on every present so the (persistent) bubble view replays its popIn.
+    private let popState = BubblePopState()
     /// Invoked when the bubble's expand button is tapped — opens the full standalone preview for the
     /// peeked item. Wired by ClipboardPanelController.
     var onExpand: ((ClipboardItem) -> Void)?
@@ -66,8 +68,12 @@ final class QuickLookBubbleController {
             window.setFrame(frame, display: false)
             window.alphaValue = 0
             window.orderFront(nil)
+            // Tern's popIn: the window fades (cheap: no blur to recompute) while the bubble content
+            // scales from 0.97 and rises 3pt — see QuickLookBubbleView.
+            popState.generation &+= 1
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.12
+                context.duration = Theme.Motion.seconds(0.16)
+                context.timingFunction = Theme.Motion.outTiming
                 window.animator().alphaValue = 1
             }
         }
@@ -75,7 +81,7 @@ final class QuickLookBubbleController {
 
     private func createWindow(model: PanelViewModel) {
         let hosting = NSHostingController(
-            rootView: QuickLookBubbleView(model: model, expand: { [weak self] item in
+            rootView: QuickLookBubbleView(model: model, pop: popState, expand: { [weak self] item in
                 self?.expandTapped(item)
             })
         )
@@ -174,10 +180,16 @@ final class QuickLookBubbleController {
 
 /// The bubble's SwiftUI content. Observes the panel model so the peek follows the selection (the
 /// controller resizes the window; this view swaps the content) and renders the rounded card + tail.
+/// Presentation counter the controller bumps on each show so the bubble view replays its entrance.
+@MainActor
+final class BubblePopState: ObservableObject {
+    @Published var generation = 0
+}
+
 private struct QuickLookBubbleView: View {
     @ObservedObject var model: PanelViewModel
+    @ObservedObject var pop: BubblePopState
     let expand: (ClipboardItem) -> Void
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Group {
@@ -195,14 +207,15 @@ private struct QuickLookBubbleView: View {
     private func bubble(for item: ClipboardItem) -> some View {
         let tail = QuickLookBubbleController.tailHeight
         return ZStack {
-            BubbleTailShape(tailHeight: tail).fill(background)
-            BubbleTailShape(tailHeight: tail).stroke(border, lineWidth: 1)
+            BubbleTailShape(tailHeight: tail).fill(Theme.Surface.card)
+            BubbleTailShape(tailHeight: tail).stroke(Theme.Line.l2, lineWidth: 1)
             content(for: item)
                 .padding(QuickLookBubbleController.contentInset)
                 .padding(.bottom, tail) // keep content clear of the tail notch
         }
         .compositingGroup()
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.55 : 0.22), radius: 16, y: 6)
+        .shadow(color: .black.opacity(0.55), radius: 16, y: 6)
+        .popIn(trigger: pop.generation, duration: 0.16, nudge: 3)
         // A tiny, non-interactive hint that the peek is expandable (↗ opens a URL in the browser, ⤢
         // opens the inspect window) — small and tertiary so it never dominates the bubble.
         .overlay(alignment: .topTrailing) { expandHint(item) }
@@ -227,7 +240,7 @@ private struct QuickLookBubbleView: View {
         }
         return Image(systemName: opensInBrowser ? "arrow.up.right" : "arrow.up.left.and.arrow.down.right")
             .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(Theme.Text.t3)
             .padding(9)
             .allowsHitTesting(false)
     }
@@ -245,25 +258,17 @@ private struct QuickLookBubbleView: View {
                 Image(systemName: "photo").font(.system(size: 30, weight: .medium))
                 Text("Image unavailable").font(.system(size: 12, weight: .semibold))
             }
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.Text.t3)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             Text(item.text.prefix(QuickLookBubbleController.bubbleTextCap))
                 .font(.system(size: 13))
-                .foregroundStyle(.primary)
+                .foregroundStyle(Theme.Text.t1)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .clipped()
         }
     }
 
-    private var background: Color {
-        // Opaque, like the cards: a peek must occlude the blurred desktop for crisp, readable content.
-        colorScheme == .dark ? Color(red: 0.15, green: 0.15, blue: 0.17) : Color.white
-    }
-
-    private var border: Color {
-        colorScheme == .dark ? Color.white.opacity(0.14) : Color.black.opacity(0.10)
-    }
 }
 
 /// A rounded-rectangle bubble with a Dock-tooltip-style tail at its bottom-center, traced as ONE

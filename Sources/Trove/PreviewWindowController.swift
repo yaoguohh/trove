@@ -176,7 +176,7 @@ private struct ClipPreviewView: View {
                 .interpolation(.high)
                 .scaledToFit()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(nsColor: .windowBackgroundColor))
+                .background(Theme.Surface.coal)
         } else if item.kind == .image {
             // An image item whose file went missing — show a clear placeholder, not blank.
             VStack(spacing: 10) {
@@ -185,9 +185,9 @@ private struct ClipPreviewView: View {
                 Text("Image unavailable")
                     .font(.system(size: 14, weight: .semibold))
             }
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.Text.t3)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(nsColor: .windowBackgroundColor))
+            .background(Theme.Surface.coal)
         } else {
             // Detection runs on the bounded inline `text` (cheap); each branch is a pure display
             // layer. Rich previews live ONLY here, never per-card.
@@ -218,11 +218,11 @@ private struct PinTitlebarButton: View {
         } label: {
             Image(systemName: isPinned ? "pin.fill" : "pin")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(isPinned ? Color.accentColor : Color.secondary)
+                .foregroundStyle(isPinned ? Theme.accent : Theme.Text.t3)
                 .frame(width: 32, height: 22)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable)
         .help(isPinned ? String(localized: "Unpin") : String(localized: "Keep on Top"))
     }
 }
