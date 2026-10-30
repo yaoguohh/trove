@@ -85,3 +85,67 @@ struct SSRFAddressClassificationTests {
         #expect(LinkMetadataProvider.isAllowedHost("github.com"))
     }
 }
+
+struct LinkMetadataNegativeCacheTests {
+    private func empty(fetchedAt: Date?) -> LinkMetadata {
+        LinkMetadata(url: "https://example.com", title: nil, host: "example.com", port: nil, iconFileName: nil, fetchedAt: fetchedAt)
+    }
+
+    @Test func emptyRecordExpiresAfterTheTTL() {
+        let now = Date()
+        #expect(LinkMetadataProvider.isStale(empty(fetchedAt: now.addingTimeInterval(-2 * 86_400)), now: now))
+        #expect(!LinkMetadataProvider.isStale(empty(fetchedAt: now.addingTimeInterval(-60)), now: now))
+    }
+
+    @Test func legacyEmptyRecordWithoutTimestampCountsAsStale() {
+        #expect(LinkMetadataProvider.isStale(empty(fetchedAt: nil), now: Date()))
+    }
+
+    @Test func recordsWithContentNeverExpire() {
+        let old = Date(timeIntervalSinceNow: -365 * 86_400)
+        var titled = empty(fetchedAt: old)
+        titled.title = "Example"
+        #expect(!LinkMetadataProvider.isStale(titled, now: Date()))
+        var iconOnly = empty(fetchedAt: nil)
+        iconOnly.iconFileName = "x-icon.png"
+        #expect(!LinkMetadataProvider.isStale(iconOnly, now: Date()))
+    }
+
+    @Test func headEndIsDetectedCaseInsensitively() {
+        let window = 16 * 1024
+        #expect(LinkMetadataProvider.containsHeadEnd(Data("<html><head><title>x</title></HEAD><body>".utf8), lookingBackFrom: window))
+        #expect(LinkMetadataProvider.containsHeadEnd(Data("<head></head>".utf8), lookingBackFrom: window))
+        #expect(!LinkMetadataProvider.containsHeadEnd(Data("<html><head><title>x</title>".utf8), lookingBackFrom: window))
+        // A marker straddling the window boundary is still found (the search looks back marker-length further).
+        let padded = Data(repeating: 0x20, count: window - 3) + Data("</head>".utf8)
+        #expect(LinkMetadataProvider.containsHeadEnd(padded, lookingBackFrom: window))
+    }
+}
+
+actor ConcurrencyTracker {
+    private(set) var current = 0
+    private(set) var peak = 0
+    func enter() { current += 1; peak = max(peak, current) }
+    func exit() { current -= 1 }
+}
+
+struct AsyncSemaphoreTests {
+    @Test func capsSimultaneousHolders() async {
+        let gate = AsyncSemaphore(limit: 2)
+        let tracker = ConcurrencyTracker()
+        await withTaskGroup(of: Void.self) { group in
+            for _ in 0..<8 {
+                group.addTask {
+                    await gate.acquire()
+                    await tracker.enter()
+                    try? await Task.sleep(nanoseconds: 15_000_000)
+                    await tracker.exit()
+                    await gate.release()
+                }
+            }
+        }
+        #expect(await tracker.peak <= 2)
+        #expect(await tracker.peak >= 1)
+        #expect(await tracker.current == 0)
+    }
+}
