@@ -9,6 +9,10 @@ struct LinkMetadata: Codable, Equatable {
     /// Final response port, when explicit. Optional so metadata cached by older releases still decodes.
     var port: Int? = nil
     var iconFileName: String?
+    /// When this record was produced. Lets a failed lookup (no title, no icon) expire and be retried
+    /// instead of being cached forever — a link copied while offline used to never get its title.
+    /// Optional so records cached by older releases still decode (they count as expired once).
+    var fetchedAt: Date? = nil
 
     var iconFileURL: URL? {
         guard let iconFileName else { return nil }
@@ -20,8 +24,15 @@ struct LinkMetadata: Codable, Equatable {
 final class LinkMetadataProvider {
     static let shared = LinkMetadataProvider()
 
-    private nonisolated static let maxHTMLBytes = 2_000_000
+    /// The title and icon links live in <head>; the reader also stops at </head>, so this is a ceiling
+    /// for pathological pages, not the typical read.
+    private nonisolated static let maxHTMLBytes = 512_000
     private nonisolated static let maxIconBytes = 1_000_000
+    /// How long a lookup that produced nothing (no title, no icon) is believed before retrying.
+    nonisolated static let negativeCacheTTL: TimeInterval = 24 * 60 * 60
+    /// Cap on simultaneous page fetches. A strip of uncached link cards used to open one URLSession
+    /// each, all at once.
+    nonisolated static let maxConcurrentFetches = 4
     nonisolated static let autoFetchDefaultsKey = "Trove.linkMetadataAutoFetch"
 
     /// Whether link cards may reach out to the network to fetch title/favicon.
@@ -42,6 +53,15 @@ final class LinkMetadataProvider {
     private var inFlight: [String: Task<LinkMetadata?, Never>] = [:]
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
+    private nonisolated static let fetchGate = AsyncSemaphore(limit: maxConcurrentFetches)
+    /// One session for every fetch: connection reuse, one delegate, no per-request setup/teardown.
+    private nonisolated static let session: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.timeoutIntervalForRequest = 7
+        configuration.httpMaximumConnectionsPerHost = 2
+        return URLSession(configuration: configuration, delegate: SSRFGuardSessionDelegate(), delegateQueue: nil)
+    }()
 
     nonisolated static var cacheDirectoryURL: URL {
         AppPaths.applicationSupportSubdirectory("link-metadata")
@@ -51,12 +71,14 @@ final class LinkMetadataProvider {
         guard let url = normalizedURL(from: rawURL) else { return nil }
         let requestURL = Self.sanitizedRequestURL(url)
         let key = cacheKey(for: requestURL)
-        if let cached = memoryCache[key] {
-            return cached
-        }
-        if let cached = readCachedMetadata(for: key) {
+        // A cached record is reused unless it is an expired negative result (and fetching is allowed),
+        // in which case it is refreshed below.
+        let cached = memoryCache[key] ?? readCachedMetadata(for: key)
+        if let cached {
             cacheInMemory(key, cached)
-            return cached
+            if !(Self.isAutoFetchEnabled && Self.isStale(cached, now: Date())) {
+                return cached
+            }
         }
         // Privacy: never hit the network unless the user has opted in.
         guard Self.isAutoFetchEnabled else {
@@ -77,6 +99,14 @@ final class LinkMetadataProvider {
             write(metadata, key: key)
         }
         return metadata
+    }
+
+    /// A record with nothing in it is retried once `negativeCacheTTL` has passed (legacy records
+    /// without a timestamp count as expired). Records that carry a title or icon never expire.
+    nonisolated static func isStale(_ metadata: LinkMetadata, now: Date) -> Bool {
+        guard metadata.title == nil, metadata.iconFileName == nil else { return false }
+        guard let fetchedAt = metadata.fetchedAt else { return true }
+        return now.timeIntervalSince(fetchedAt) > negativeCacheTTL
     }
 
     /// Bounded in-memory hot cache: evicts the oldest entry past the limit. The disk
@@ -104,7 +134,7 @@ final class LinkMetadataProvider {
             let data = try encoder.encode(metadata)
             try data.write(to: Self.cacheDirectoryURL.appendingPathComponent("\(key).json"), options: .atomic)
         } catch {
-            NSLog("Trove failed to cache link metadata: \(error.localizedDescription)")
+            Log.links.error("failed to cache link metadata: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -139,8 +169,16 @@ final class LinkMetadataProvider {
     }
 
     private nonisolated static func fetchMetadata(for url: URL, key: String) async -> LinkMetadata? {
+        // At most `maxConcurrentFetches` pages in flight across the whole app.
+        await fetchGate.acquire()
+        let metadata = await fetchMetadataUngated(for: url, key: key)
+        await fetchGate.release()
+        return metadata
+    }
+
+    private nonisolated static func fetchMetadataUngated(for url: URL, key: String) async -> LinkMetadata? {
         do {
-            let (data, response) = try await fetch(from: url, accept: "text/html,application/xhtml+xml", maxBytes: maxHTMLBytes)
+            let (data, response) = try await fetch(from: url, accept: "text/html,application/xhtml+xml", maxBytes: maxHTMLBytes, stopAtHeadEnd: true)
             guard let httpResponse = response as? HTTPURLResponse, 200..<400 ~= httpResponse.statusCode else {
                 return fallbackMetadata(for: url)
             }
@@ -159,20 +197,24 @@ final class LinkMetadataProvider {
                 title: title.map(decodeHTMLEntities),
                 host: baseURL.host() ?? url.host() ?? url.absoluteString,
                 port: baseURL.port,
-                iconFileName: iconFileName
+                iconFileName: iconFileName,
+                fetchedAt: Date()
             )
         } catch {
             return fallbackMetadata(for: url)
         }
     }
 
+    /// What a link shows when nothing could be fetched: host + port only. Stamped so the negative
+    /// result expires (`isStale`) instead of sticking forever.
     private nonisolated static func fallbackMetadata(for url: URL) -> LinkMetadata {
         LinkMetadata(
             url: url.absoluteString,
             title: nil,
             host: url.host() ?? url.absoluteString,
             port: url.port,
-            iconFileName: nil
+            iconFileName: nil,
+            fetchedAt: Date()
         )
     }
 
@@ -189,7 +231,7 @@ final class LinkMetadataProvider {
         guard let url else { return nil }
         do {
             guard let host = url.host(), isAllowedHost(host) else { return nil }
-            let (data, response) = try await fetch(from: url, accept: "image/*,*/*;q=0.5", maxBytes: maxIconBytes)
+            let (data, response) = try await fetch(from: url, accept: "image/*,*/*;q=0.5", maxBytes: maxIconBytes, stopAtHeadEnd: false)
             guard let httpResponse = response as? HTTPURLResponse, 200..<400 ~= httpResponse.statusCode else {
                 return nil
             }
@@ -206,18 +248,15 @@ final class LinkMetadataProvider {
     }
 
     /// Streams the response and aborts once it exceeds `maxBytes`, so a hostile or
-    /// chunked endpoint cannot exhaust memory. Redirects are validated per-hop by
-    /// `SSRFGuardSessionDelegate`, and the host is re-checked against resolved IPs.
-    private nonisolated static func fetch(from url: URL, accept: String, maxBytes: Int) async throws -> (Data, URLResponse) {
-        guard let host = url.host(), isAllowedHost(host), hostResolvesToAllowedAddress(host) else {
+    /// chunked endpoint cannot exhaust memory. With `stopAtHeadEnd` the read also ends at `</head>`
+    /// (everything the title/icon parser needs is above it), so a typical page costs tens of KB
+    /// rather than its whole body. Redirects are validated per-hop by `SSRFGuardSessionDelegate`,
+    /// and the host is re-checked against resolved IPs — off the cooperative thread pool, since
+    /// `getaddrinfo` blocks.
+    private nonisolated static func fetch(from url: URL, accept: String, maxBytes: Int, stopAtHeadEnd: Bool) async throws -> (Data, URLResponse) {
+        guard let host = url.host(), isAllowedHost(host), await hostResolvesToAllowedAddressAsync(host) else {
             throw URLError(.badServerResponse)
         }
-
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        let delegate = SSRFGuardSessionDelegate()
-        let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
-        defer { session.finishTasksAndInvalidate() }
 
         var request = URLRequest(url: url, timeoutInterval: 7)
         request.setValue("Trove/0.1 LinkMetadata", forHTTPHeaderField: "User-Agent")
@@ -234,14 +273,45 @@ final class LinkMetadataProvider {
 
         var data = Data()
         data.reserveCapacity(min(maxBytes, 64 * 1024))
+        var nextHeadCheck = headCheckStride
         for try await byte in bytes {
             data.append(byte)
             if data.count > maxBytes {
                 bytes.task.cancel()
                 throw URLError(.dataLengthExceedsMaximum)
             }
+            if stopAtHeadEnd, data.count >= nextHeadCheck {
+                nextHeadCheck += headCheckStride
+                if containsHeadEnd(data, lookingBackFrom: headCheckStride) {
+                    bytes.task.cancel()
+                    break
+                }
+            }
         }
         return (data, response)
+    }
+
+    private nonisolated static let headCheckStride = 16 * 1024
+    private nonisolated static let headEndMarker = Data("</head".utf8)
+
+    /// Case-insensitive `</head` search over the most recent `window` bytes (plus the marker length,
+    /// so a marker straddling two strides is still found).
+    nonisolated static func containsHeadEnd(_ data: Data, lookingBackFrom window: Int) -> Bool {
+        let start = max(0, data.count - window - headEndMarker.count)
+        let tail = data[start...]
+        // ASCII-lowercase the window: `</HEAD>` is legal HTML.
+        let lowered = Data(tail.map { $0 >= 0x41 && $0 <= 0x5A ? $0 + 0x20 : $0 })
+        return lowered.range(of: headEndMarker) != nil
+    }
+
+    /// `hostResolvesToAllowedAddress` on a GCD queue: `getaddrinfo` is a blocking call and must not
+    /// occupy one of the few cooperative-pool threads for the duration of a DNS lookup.
+    nonisolated static func hostResolvesToAllowedAddressAsync(_ host: String) async -> Bool {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                continuation.resume(returning: hostResolvesToAllowedAddress(host))
+            }
+        }
     }
 
     private nonisolated static func iconFileExtension(for response: URLResponse, url: URL) -> String {
@@ -470,6 +540,33 @@ final class LinkMetadataProvider {
         "lsquo": "\u{2018}", "rsquo": "\u{2019}", "ldquo": "\u{201C}", "rdquo": "\u{201D}",
         "laquo": "«", "raquo": "»", "deg": "°", "euro": "€", "pound": "£", "cent": "¢", "yen": "¥"
     ]
+}
+
+/// A counting semaphore for structured-concurrency code: `acquire` suspends (never blocks a thread)
+/// until a slot is free. Used to cap simultaneous metadata fetches.
+actor AsyncSemaphore {
+    private var available: Int
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(limit: Int) {
+        available = max(1, limit)
+    }
+
+    func acquire() async {
+        if available > 0 {
+            available -= 1
+            return
+        }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func release() {
+        if waiters.isEmpty {
+            available += 1
+        } else {
+            waiters.removeFirst().resume()
+        }
+    }
 }
 
 /// Cancels HTTP redirects that would land on a disallowed (private/reserved) host,
