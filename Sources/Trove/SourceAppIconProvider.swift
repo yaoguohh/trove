@@ -10,9 +10,15 @@ enum SourceAppIconProvider {
     // hard ceiling against pathological growth from many transient unbundled sources.
     private static let cacheEntryLimit = 256
 
+    /// Drop half the entries past the cap rather than everything, so hitting the limit costs a few
+    /// re-decodes instead of a full re-decode of every visible card's icon.
     private static func evictIfNeeded() {
-        if iconCache.count > cacheEntryLimit { iconCache.removeAll(keepingCapacity: true) }
-        if paletteCache.count > cacheEntryLimit { paletteCache.removeAll(keepingCapacity: true) }
+        if iconCache.count > cacheEntryLimit {
+            for key in Array(iconCache.keys.prefix(cacheEntryLimit / 2)) { iconCache[key] = nil }
+        }
+        if paletteCache.count > cacheEntryLimit {
+            for key in Array(paletteCache.keys.prefix(cacheEntryLimit / 2)) { paletteCache[key] = nil }
+        }
     }
 
     static func icon(for item: ClipboardItem) -> NSImage? {

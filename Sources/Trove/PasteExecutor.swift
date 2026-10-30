@@ -49,6 +49,7 @@ struct PasteTargetSnapshot {
               CFGetTypeID(focusedElement) == AXUIElementGetTypeID() else {
             return nil
         }
+        // CF types have no conditional cast; the type-id check above is what makes this safe.
         return (focusedElement as! AXUIElement)
     }
 
@@ -279,6 +280,7 @@ final class PasteExecutor {
         }
 
         var range = CFRange()
+        // Safe: the type-id check above guarantees `rangeValue` is an AXValue (CF types can't `as?`).
         guard AXValueGetValue((rangeValue as! AXValue), .cfRange, &range) else {
             return nil
         }
@@ -319,9 +321,9 @@ final class PasteExecutor {
     }
 
     private func debugLog(_ message: @autoclosure () -> String) {
-        #if DEBUG
-        NSLog("%@", message())
-        #endif
+        // Evaluate before interpolating: Logger's own autoclosure may not capture this one.
+        let text = message()
+        Log.paste.debug("\(text, privacy: .public)")
     }
 
     nonisolated static func replacingText(in value: String, selectedRange: CFRange, with replacement: String) -> String? {

@@ -169,7 +169,7 @@ final class HotKeyManager: @unchecked Sendable {
         if status == noErr, let ref {
             hotKeyRefs.append(ref)
         } else {
-            NSLog("Trove failed to register hotkey \(id): \(status)")
+            Log.hotkey.error("failed to register hotkey \(id): \(status)")
         }
     }
 

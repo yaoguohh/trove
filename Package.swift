@@ -12,8 +12,7 @@ let package = Package(
     ],
     dependencies: [
         // Sparkle: in-app auto-updates. Works on the free (ad-hoc, un-notarized) path via its own
-        // EdDSA update signatures — independent of Apple notarization. See memory:
-        // distribution-and-update-strategy.
+        // EdDSA update signatures — independent of Apple notarization. See RELEASE.md.
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0")
     ],
     targets: [
