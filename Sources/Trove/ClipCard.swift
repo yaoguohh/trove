@@ -62,6 +62,16 @@ struct ClipCard: View {
             isHovered: isHovered,
             metrics: metrics
         )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityDescription)
+        .accessibilityAddTraits(.isButton)
+    }
+
+    /// What VoiceOver reads for the card: name/kind, source app, then the content excerpt.
+    private var accessibilityDescription: String {
+        let name = item.title ?? item.kind.title
+        let excerpt = item.kind == .image ? "" : String(item.preview.prefix(200))
+        return excerpt.isEmpty ? "\(name), \(sourceStyle.displayName)" : "\(name), \(sourceStyle.displayName): \(excerpt)"
     }
 
     private var cardBody: some View {

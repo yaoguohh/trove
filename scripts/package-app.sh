@@ -15,8 +15,13 @@ SU_FEED_URL="${TROVE_SU_FEED_URL:-https://github.com/yaoguohh/trove/releases/lat
 SU_PUBLIC_KEY="${TROVE_SU_PUBLIC_KEY:-}"
 # Version: marketing string + monotonic build number. Sparkle compares CFBundleVersion to decide
 # "update available", so a release MUST bump BUILD_VERSION (CI passes the tag / run number).
-MARKETING_VERSION="${TROVE_MARKETING_VERSION:-0.1.0}"
-BUILD_VERSION="${TROVE_BUILD_VERSION:-1}"
+# Local builds default to "<latest tag>-dev" / commit count, so an installed dev build reads as newer
+# than the release it was cut from instead of as 0.1.0 (which Sparkle would then "update" over).
+DEFAULT_VERSION="$(git -C "$ROOT_DIR" describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')"
+DEFAULT_BUILD="$(git -C "$ROOT_DIR" rev-list --count HEAD 2>/dev/null)"
+MARKETING_VERSION="${TROVE_MARKETING_VERSION:-${DEFAULT_VERSION:+${DEFAULT_VERSION}-dev}}"
+MARKETING_VERSION="${MARKETING_VERSION:-0.1.0-dev}"
+BUILD_VERSION="${TROVE_BUILD_VERSION:-${DEFAULT_BUILD:-1}}"
 
 cd "$ROOT_DIR"
 swift build -c release
