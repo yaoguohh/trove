@@ -139,9 +139,7 @@ final class CardDragView: NSView, NSDraggingSource {
     }
 
     private func previewImage(for item: ClipboardItem, size: CGSize) -> NSImage {
-        if item.kind == .image,
-           let url = item.imageFileURL,
-           let image = ImageCache.image(at: url) {
+        if item.kind == .image, let image = ImageCache.thumbnail(for: item) {
             return image
         }
 

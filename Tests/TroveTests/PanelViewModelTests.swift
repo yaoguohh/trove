@@ -48,6 +48,24 @@ struct PanelViewModelSelectionTests {
         #expect(model.selectedID == nil)
     }
 
+    @Test func filteredItemsFollowQueryAndStoreChanges() {
+        let model = makeModel(itemCount: 4)   // item-0 … item-3, newest first
+        #expect(model.filteredItems.count == 4)
+
+        model.query = "item-2"
+        #expect(model.filteredItems.map(\.text) == ["item-2"])
+
+        // A new clip arriving while a query is active is filtered into the published result.
+        model.store.add(text: "item-22", sourceApp: "Test")
+        #expect(model.filteredItems.map(\.text) == ["item-22", "item-2"])
+
+        model.query = ""
+        #expect(model.filteredItems.count == 5)
+
+        model.filter.kind = .image
+        #expect(model.filteredItems.isEmpty)
+    }
+
     @Test func selectionChangeHookFiresOnlyOnRealChange() {
         let model = makeModel(itemCount: 3)
         var fired = 0
