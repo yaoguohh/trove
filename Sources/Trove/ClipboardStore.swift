@@ -250,7 +250,20 @@ final class ClipboardStore: ObservableObject {
         }
         guard !pending.isEmpty else { return }
         let directory = ClipboardItem.imageDirectoryURL
-        Task.detached(priority: .utility) { [weak self] in
+        // Main-actor task awaits the detached work; only the Sendable result crosses back, so no
+        // reference to `self` is ever sent off the main actor (Swift 6.0 rejects that).
+        Task { [weak self] in
+            let resolved = await Self.generateThumbnails(for: pending, in: directory)
+            guard !resolved.isEmpty else { return }
+            self?.applyThumbnails(resolved)
+        }
+    }
+
+    nonisolated private static func generateThumbnails(
+        for pending: [(id: UUID, url: URL)],
+        in directory: URL
+    ) async -> [(id: UUID, thumbnailFileName: String)] {
+        await Task.detached(priority: .utility) {
             var resolved: [(id: UUID, thumbnailFileName: String)] = []
             for entry in pending {
                 guard let png = try? Data(contentsOf: entry.url) else { continue }   // missing file: leave it
@@ -265,9 +278,8 @@ final class ClipboardStore: ObservableObject {
                     continue
                 }
             }
-            guard !resolved.isEmpty else { return }
-            await MainActor.run { self?.applyThumbnails(resolved) }
-        }
+            return resolved
+        }.value
     }
 
     private func applyThumbnails(_ resolved: [(id: UUID, thumbnailFileName: String)]) {
