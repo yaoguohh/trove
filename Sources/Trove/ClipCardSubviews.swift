@@ -5,7 +5,9 @@ struct ImagePreview: View {
 
     var body: some View {
         Group {
-            if let url = item.imageFileURL, let image = ImageCache.image(at: url) {
+            // The ≤640px thumbnail, never the original: a card is ~300pt wide, and decoding every
+            // screenshot at full size is what kept 66 MB of bitmaps resident while the panel was hidden.
+            if let image = ImageCache.thumbnail(for: item) {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()

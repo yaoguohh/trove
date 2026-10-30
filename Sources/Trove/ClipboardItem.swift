@@ -55,6 +55,9 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
     var sourceBundleIdentifier: String?
     var sourceAppPath: String?
     var imageFileName: String?
+    /// Card-sized rendition of an image clip (≤640px, see `ImageIngest`). Equal to `imageFileName`
+    /// when the original is already small; nil for legacy items until `backfillThumbnails` runs.
+    var thumbnailFileName: String?
     var createdAt: Date
     var isPinned: Bool
     var kind: ClipboardKind
@@ -147,7 +150,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
         let key = url.path as NSString
         if let cached = Self.fullTextCache.object(forKey: key) { return cached as String }
         guard let loaded = try? String(contentsOf: url, encoding: .utf8) else {
-            NSLog("Trove: full-text sidecar unreadable (\(url.lastPathComponent)); pasting the inline prefix only")
+            Log.store.error("full-text sidecar unreadable (\(url.lastPathComponent, privacy: .public)); pasting the inline prefix only")
             // Memoize the fallback so a degraded clip doesn't re-stat + re-log on every paste/drag.
             Self.fullTextCache.setObject(text as NSString, forKey: key, cost: text.utf8.count)
             return text
@@ -175,6 +178,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
         self.sourceBundleIdentifier = sourceBundleIdentifier
         self.sourceAppPath = sourceAppPath
         self.imageFileName = imageFileName
+        self.thumbnailFileName = nil
         self.createdAt = createdAt
         self.isPinned = isPinned
         self.kind = kind
@@ -199,6 +203,8 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
         sourceBundleIdentifier = try container.decodeIfPresent(String.self, forKey: .sourceBundleIdentifier)
         sourceAppPath = try container.decodeIfPresent(String.self, forKey: .sourceAppPath)
         imageFileName = try container.decodeIfPresent(String.self, forKey: .imageFileName)
+        // Pre-thumbnail history lacks this key → nil, backfilled at launch.
+        thumbnailFileName = try container.decodeIfPresent(String.self, forKey: .thumbnailFileName)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         isPinned = try container.decode(Bool.self, forKey: .isPinned)
         kind = try container.decodeIfPresent(ClipboardKind.self, forKey: .kind) ?? Self.detectKind(for: text)
@@ -217,6 +223,11 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
     var imageFileURL: URL? {
         guard let imageFileName else { return nil }
         return Self.imageDirectoryURL.appendingPathComponent(imageFileName)
+    }
+
+    var thumbnailFileURL: URL? {
+        guard let thumbnailFileName else { return nil }
+        return Self.imageDirectoryURL.appendingPathComponent(thumbnailFileName)
     }
 
     static var imageDirectoryURL: URL {

@@ -11,25 +11,20 @@ struct ClipboardSearchFilter: Equatable {
     var pinboardID: UUID?
 }
 
-private struct StoreDocument: Codable, Sendable {
-    var items: [ClipboardItem]
-    var pinboards: [Pinboard]
-}
-
 @MainActor
 final class ClipboardStore: ObservableObject {
+    /// Display order is an invariant: pinned first, then newest first. Every mutation re-establishes
+    /// it (`sortForPins`), so readers — `ClipSearch`, the panel — never sort.
     @Published private(set) var items: [ClipboardItem] = []
     @Published private(set) var pinboards: [Pinboard] = []
 
-    private let maxItems = 500
-    /// Max characters of a clip's text scanned per item per keystroke. Bounds search to O(cap) so a
-    /// huge clip can't make every keystroke walk a multi-MB string. A clip's stored `text` is itself
-    /// bounded once the sidecar storage cap ships, but capping the scan independently means a future
-    /// change to that cap can't silently re-introduce an unbounded per-keystroke scan. Documented
-    /// limitation: a match that occurs ONLY past this prefix (in a clip's sidecar tail) won't surface.
-    private let searchScanCap = 20_000
-    private let decoder = JSONDecoder()
-    private let fileURL: URL
+    /// History cap. Overridable without UI via `defaults write io.github.yaoguohh.trove Trove.maxItems 1000`
+    /// (clamped to 50…5000); peers default to 30–200, Trove to 500.
+    let maxItems: Int
+    static let maxItemsDefaultsKey = "Trove.maxItems"
+    static let defaultMaxItems = 500
+
+    private let persistence: HistoryPersistence
     private let managesSidecarFiles: Bool
     private var isLoading = false
     private var saveGeneration = 0
@@ -50,12 +45,21 @@ final class ClipboardStore: ObservableObject {
     /// touching the user's real Application Support directory.
     init(storeURL: URL? = nil) {
         managesSidecarFiles = (storeURL == nil)
-        fileURL = storeURL ?? AppPaths.historyFileURL
+        persistence = HistoryPersistence(fileURL: storeURL ?? AppPaths.historyFileURL)
+        let configured = UserDefaults.standard.integer(forKey: Self.maxItemsDefaultsKey)
+        maxItems = configured == 0 ? Self.defaultMaxItems : min(5000, max(50, configured))
         load()
         ensureDefaultPinboards()
         if managesSidecarFiles {
-            reconcileImageFiles()
-            reconcileTextFiles()
+            // Thumbnails count as referenced through `thumbnailFileName`.
+            HistoryPersistence.removeUnreferencedFiles(
+                in: AppPaths.imageDirectoryURL,
+                referenced: Set(items.compactMap(\.imageFileName) + items.compactMap(\.thumbnailFileName))
+            )
+            HistoryPersistence.removeUnreferencedFiles(
+                in: AppPaths.textDirectoryURL,
+                referenced: Set(items.compactMap(\.textFileName))
+            )
         }
     }
 
@@ -71,15 +75,18 @@ final class ClipboardStore: ObservableObject {
         let incomingHash = normalized.count > ClipboardItem.sidecarThreshold ? ClipboardItem.hash(normalized) : nil
         let existing = dedupIndex(hash: incomingHash, normalizedText: normalized)
 
+        // Build the next array locally and publish ONCE: every `items` assignment re-runs the
+        // panel's search over the whole history, so an add must not publish three times.
+        var next = items
         if let existing {
             // Re-copy of an existing clip: move to the top, refresh source. A big clip's sidecar is
             // already on disk and unchanged, so nothing is rewritten.
-            var item = items.remove(at: existing)
+            var item = next.remove(at: existing)
             item.createdAt = Date()
             item.sourceApp = sourceApp
             item.sourceBundleIdentifier = sourceBundleIdentifier
             item.sourceAppPath = sourceAppPath
-            items.insert(item, at: 0)
+            next.insert(item, at: 0)
         } else {
             let item = makeStoredItem(
                 text: text,
@@ -88,11 +95,10 @@ final class ClipboardStore: ObservableObject {
                 sourceAppPath: sourceAppPath,
                 normalizedHash: incomingHash
             )
-            items.insert(item, at: 0)
+            next.insert(item, at: 0)
         }
 
-        trim()
-        scheduleSave()
+        commit(next)
     }
 
     /// Index of an existing live clip that dedups against the given content — by `fullTextHash` for a
@@ -168,13 +174,16 @@ final class ClipboardStore: ObservableObject {
             item.textFileName = fileName
             item.text = String(storedText.prefix(ClipboardItem.inlineTextCap))
         } catch {
-            NSLog("Trove text sidecar save failed: \(error.localizedDescription)")
+            Log.store.error("text sidecar save failed: \(error.localizedDescription, privacy: .public)")
             // Fall back to full inline so paste fidelity is never silently lost; still allow dedup.
             item.fullTextHash = hash
         }
         return item
     }
 
+    /// Synchronous image ingestion (PNG bytes): writes the image + thumbnail, then inserts. The live
+    /// monitor prefers `addPreparedImage` with files written off-main; this path serves tests and
+    /// callers that already hold the bytes on the main actor.
     func addImage(
         data: Data,
         sourceApp: String,
@@ -182,31 +191,99 @@ final class ClipboardStore: ObservableObject {
         sourceAppPath: String? = nil
     ) {
         let id = UUID()
-        let fileName = "\(id.uuidString).png"
-        do {
-            try FileManager.default.createDirectory(
-                at: ClipboardItem.imageDirectoryURL,
-                withIntermediateDirectories: true
-            )
-            try data.write(to: ClipboardItem.imageDirectoryURL.appendingPathComponent(fileName), options: .atomic)
-        } catch {
-            NSLog("Trove image save failed: \(error.localizedDescription)")
-            return
+        var files = ImageIngest.StoredFiles(imageFileName: ImageIngest.imageFileName(for: id), thumbnailFileName: nil)
+        if managesSidecarFiles {
+            do {
+                files = try ImageIngest.writeFiles(id: id, png: data, directory: ClipboardItem.imageDirectoryURL)
+            } catch {
+                Log.images.error("image save failed: \(error.localizedDescription, privacy: .public)")
+                return
+            }
         }
+        addPreparedImage(
+            id: id,
+            files: files,
+            sourceApp: sourceApp,
+            sourceBundleIdentifier: sourceBundleIdentifier,
+            sourceAppPath: sourceAppPath,
+            createdAt: Date()
+        )
+    }
 
-        let item = ClipboardItem(
+    /// Insert an image clip whose files are already on disk (written by `ImageIngest` on a background
+    /// task). `createdAt` is the capture time, so a clip that finished encoding after a later text copy
+    /// still sorts into its true position.
+    func addPreparedImage(
+        id: UUID,
+        files: ImageIngest.StoredFiles,
+        sourceApp: String,
+        sourceBundleIdentifier: String?,
+        sourceAppPath: String?,
+        createdAt: Date
+    ) {
+        var item = ClipboardItem(
             id: id,
             text: "Image",
             sourceApp: sourceApp,
             sourceBundleIdentifier: sourceBundleIdentifier,
             sourceAppPath: sourceAppPath,
-            imageFileName: fileName,
+            imageFileName: files.imageFileName,
+            createdAt: createdAt,
             kind: .image,
             title: "Image"
         )
-        items.insert(item, at: 0)
-        trim()
+        item.thumbnailFileName = files.thumbnailFileName
+        var next = items
+        next.insert(item, at: 0)
+        commit(next)
+    }
+
+    /// One-time migration for image clips stored before thumbnails existed: generate each missing
+    /// thumbnail on a utility task (ImageIO downsampling, ~20–130ms per image), then record the file
+    /// names and save once. Items whose original is already small point their thumbnail at the
+    /// original so they are never re-examined.
+    func backfillThumbnails() {
+        guard managesSidecarFiles else { return }
+        let pending: [(id: UUID, url: URL)] = items.compactMap { item in
+            guard item.thumbnailFileName == nil, let url = item.imageFileURL else { return nil }
+            return (item.id, url)
+        }
+        guard !pending.isEmpty else { return }
+        let directory = ClipboardItem.imageDirectoryURL
+        Task.detached(priority: .utility) { [weak self] in
+            var resolved: [(id: UUID, thumbnailFileName: String)] = []
+            for entry in pending {
+                guard let png = try? Data(contentsOf: entry.url) else { continue }   // missing file: leave it
+                switch ImageIngest.thumbnail(from: png) {
+                case .generated(let data):
+                    let name = ImageIngest.thumbnailFileName(for: entry.id)
+                    guard (try? data.write(to: directory.appendingPathComponent(name), options: .atomic)) != nil else { continue }
+                    resolved.append((entry.id, name))
+                case .notNeeded:
+                    resolved.append((entry.id, entry.url.lastPathComponent))
+                case .failed:
+                    continue
+                }
+            }
+            guard !resolved.isEmpty else { return }
+            await MainActor.run { self?.applyThumbnails(resolved) }
+        }
+    }
+
+    private func applyThumbnails(_ resolved: [(id: UUID, thumbnailFileName: String)]) {
+        let names = Dictionary(resolved.map { ($0.id, $0.thumbnailFileName) }, uniquingKeysWith: { first, _ in first })
+        var next = items
+        var changed = false
+        for index in next.indices where next[index].thumbnailFileName == nil {
+            if let name = names[next[index].id] {
+                next[index].thumbnailFileName = name
+                changed = true
+            }
+        }
+        guard changed else { return }
+        items = next
         scheduleSave()
+        Log.images.notice("backfilled \(resolved.count) image thumbnails")
     }
 
     func togglePin(_ item: ClipboardItem) {
@@ -315,10 +392,13 @@ final class ClipboardStore: ObservableObject {
 
     func deletePinboard(_ pinboard: Pinboard) {
         pinboards.removeAll { $0.id == pinboard.id }
-        for index in items.indices where items[index].pinboardID == pinboard.id {
-            items[index].pinboardID = nil
-            items[index].isPinned = false
+        var next = items
+        for index in next.indices where next[index].pinboardID == pinboard.id {
+            next[index].pinboardID = nil
+            next[index].isPinned = false
         }
+        // Un-pinning moves cards out of the pinned block, so re-establish the order invariant.
+        items = Self.sorted(next)
         scheduleSave()
     }
 
@@ -341,33 +421,10 @@ final class ClipboardStore: ObservableObject {
         scheduleSave()
     }
 
+    /// Filter the (already display-ordered) history. The panel keeps its own memoised copy via
+    /// `PanelViewModel`; this entry point serves one-off callers (the status menu count, tests).
     func matches(query: String, filter: ClipboardSearchFilter = ClipboardSearchFilter()) -> [ClipboardItem] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        var candidates = sortedItems
-
-        switch filter.scope {
-        case .history:
-            break
-        case .pinned:
-            candidates = candidates.filter(\.isPinned)
-        }
-
-        if let kind = filter.kind {
-            candidates = candidates.filter { $0.kind == kind }
-        }
-        if let pinboardID = filter.pinboardID {
-            candidates = candidates.filter { $0.pinboardID == pinboardID }
-        }
-        guard !trimmed.isEmpty else { return candidates }
-        return candidates.filter {
-            // `prefix(_:)` is O(searchScanCap); scanning only the bounded prefix keeps each keystroke
-            // cheap regardless of clip size. (`localizedCaseInsensitiveContains` bridges the prefix to
-            // NSString — a small, capped ≤searchScanCap copy per item, not the whole clip.)
-            $0.text.prefix(searchScanCap).localizedCaseInsensitiveContains(trimmed) ||
-            ($0.title?.localizedCaseInsensitiveContains(trimmed) ?? false) ||
-            $0.sourceApp.localizedCaseInsensitiveContains(trimmed) ||
-            $0.kind.title.localizedCaseInsensitiveContains(trimmed)
-        }
+        ClipSearch.filter(items, query: query, filter: filter)
     }
 
     /// Synchronously writes pending changes. Call on app termination so a debounced
@@ -376,10 +433,10 @@ final class ClipboardStore: ObservableObject {
         // Invalidate any pending debounced write (via generation bump), then write
         // synchronously so the termination snapshot is the authoritative last write.
         saveGeneration &+= 1
-        ClipboardStore.writeDocument(currentDocument(), to: fileURL)
+        HistoryPersistence.write(currentDocument(), to: persistence.fileURL)
     }
 
-    private var sortedItems: [ClipboardItem] {
+    nonisolated private static func sorted(_ items: [ClipboardItem]) -> [ClipboardItem] {
         items.sorted {
             if $0.isPinned != $1.isPinned {
                 return $0.isPinned && !$1.isPinned
@@ -389,19 +446,20 @@ final class ClipboardStore: ObservableObject {
     }
 
     private func sortForPins() {
-        items = sortedItems
+        items = Self.sorted(items)
     }
 
-    private func trim() {
-        let pinned = items.filter(\.isPinned)
-        let unpinned = items.filter { !$0.isPinned }
+    /// Trim to the cap, restore display order and publish `items` exactly once, then persist.
+    private func commit(_ next: [ClipboardItem]) {
+        let pinned = next.filter(\.isPinned)
+        let unpinned = next.filter { !$0.isPinned }
         let keepCount = max(0, maxItems - pinned.count)
         let kept = Array(unpinned.prefix(keepCount))
         let dropped = Array(unpinned.dropFirst(keepCount))
-        items = pinned + kept
+        items = Self.sorted(pinned + kept)
         dropped.forEach(Self.removeImageFile(for:))
         dropped.forEach(Self.removeTextFile(for:))
-        sortForPins()
+        scheduleSave()
     }
 
     // MARK: - Persistence
@@ -417,7 +475,7 @@ final class ClipboardStore: ObservableObject {
         saveGeneration &+= 1
         let generation = saveGeneration
         let document = currentDocument()
-        let url = fileURL
+        let url = persistence.fileURL
         // Task.detached's operation is @Sendable / non-isolated, so the write runs
         // off the main actor without inheriting MainActor isolation (a DispatchWorkItem
         // closure defined here would inherit it and trip the Swift 6 executor check).
@@ -425,22 +483,7 @@ final class ClipboardStore: ObservableObject {
             try? await Task.sleep(nanoseconds: 300_000_000)
             // Skip if a newer change or flush() superseded this debounced write.
             if let self, await self.saveGeneration != generation { return }
-            ClipboardStore.writeDocument(document, to: url)
-        }
-    }
-
-    nonisolated private static func writeDocument(_ document: StoreDocument, to url: URL) {
-        do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try FileManager.default.createDirectory(
-                at: url.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            let data = try encoder.encode(document)
-            try data.write(to: url, options: .atomic)
-        } catch {
-            NSLog("Trove store save failed: \(error.localizedDescription)")
+            HistoryPersistence.write(document, to: url)
         }
     }
 
@@ -448,37 +491,15 @@ final class ClipboardStore: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
-        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
-        guard let data = try? Data(contentsOf: fileURL) else { return }
-
-        if let document = try? decoder.decode(StoreDocument.self, from: data) {
-            apply(document)
-            return
-        }
-        if let legacy = try? decoder.decode([ClipboardItem].self, from: data) {
-            items = legacy
-            sortForPins()
-            return
-        }
-        // Unknown / corrupt format: preserve the bytes instead of silently wiping them.
-        backupCorruptFile(data: data)
-    }
-
-    private func apply(_ document: StoreDocument) {
-        items = document.items
-        pinboards = document.pinboards
-        sortForPins()
-    }
-
-    private func backupCorruptFile(data: Data) {
-        let suffix = UUID().uuidString.prefix(8)
-        let backupURL = fileURL.deletingLastPathComponent()
-            .appendingPathComponent("history.corrupt-\(suffix).json")
-        do {
-            try data.write(to: backupURL, options: .atomic)
-            NSLog("Trove: history could not be decoded; preserved a backup at \(backupURL.lastPathComponent)")
-        } catch {
-            NSLog("Trove: history could not be decoded and backup failed: \(error.localizedDescription)")
+        switch persistence.load() {
+        case .document(let document):
+            items = Self.sorted(document.items)
+            pinboards = document.pinboards
+        case .legacy(let legacyItems):
+            items = Self.sorted(legacyItems)
+        case .missing, .corrupt:
+            // Corrupt bytes were backed up by `HistoryPersistence`; start empty rather than wipe them.
+            break
         }
     }
 
@@ -493,34 +514,17 @@ final class ClipboardStore: ObservableObject {
     }
 
     nonisolated static func removeImageFile(for item: ClipboardItem) {
-        guard let url = item.imageFileURL else { return }
-        try? FileManager.default.removeItem(at: url)
+        if let url = item.imageFileURL {
+            try? FileManager.default.removeItem(at: url)
+        }
+        // A small image's thumbnail IS the image (same file); the second remove is a harmless no-op.
+        if let url = item.thumbnailFileURL {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     nonisolated static func removeTextFile(for item: ClipboardItem) {
         guard let url = item.textFileURL else { return }
         try? FileManager.default.removeItem(at: url)
-    }
-
-    /// Deletes PNG files in the image directory that no item references anymore
-    /// (orphans left behind by deletes/trims in prior versions or crashes).
-    private func reconcileImageFiles() {
-        let directory = AppPaths.imageDirectoryURL
-        guard let files = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else { return }
-        let referenced = Set(items.compactMap(\.imageFileName))
-        for file in files where !referenced.contains(file) {
-            try? FileManager.default.removeItem(at: directory.appendingPathComponent(file))
-        }
-    }
-
-    /// Deletes sidecar `.txt` files no item references anymore (orphans from a crash between the
-    /// sidecar write and the history persist, or from deletes/trims in a prior run).
-    private func reconcileTextFiles() {
-        let directory = AppPaths.textDirectoryURL
-        guard let files = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else { return }
-        let referenced = Set(items.compactMap(\.textFileName))
-        for file in files where !referenced.contains(file) {
-            try? FileManager.default.removeItem(at: directory.appendingPathComponent(file))
-        }
     }
 }

@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 /// Selection/search state for the clipboard panel, owned by the controller so its keyboard
@@ -6,14 +7,23 @@ import SwiftUI
 /// what lets the app-level NSEvent monitor read/mutate selection without focus-timing hacks.
 @MainActor
 final class PanelViewModel: ObservableObject {
-    @Published var query = ""
-    @Published var filter = ClipboardSearchFilter()
+    @Published var query = "" {
+        didSet { if query != oldValue { refilter() } }
+    }
+    @Published var filter = ClipboardSearchFilter() {
+        didSet { if filter != oldValue { refilter() } }
+    }
     @Published var selectedID: ClipboardItem.ID? {
         didSet {
             guard selectedID != oldValue else { return }
             onSelectionChange?()
         }
     }
+    /// The search result, recomputed exactly once per change of query / filter / history — never
+    /// inside a view body. The panel reads it several times per render, and `ClipSearch` scans up to
+    /// 20k characters per item, so a computed property here cost ~50ms × reads per keystroke at a
+    /// full history.
+    @Published private(set) var filteredItems: [ClipboardItem] = []
     /// Called (on the main actor) whenever the selection changes from any source — keyboard, hover,
     /// or programmatic — so the controller can keep an open Quick Look peek bubble re-fitted to it.
     var onSelectionChange: (() -> Void)?
@@ -29,13 +39,20 @@ final class PanelViewModel: ObservableObject {
     @Published var renamingItemID: ClipboardItem.ID?
 
     let store: ClipboardStore
+    private var itemsSubscription: AnyCancellable?
 
     init(store: ClipboardStore) {
         self.store = store
+        filteredItems = ClipSearch.filter(store.items, query: "", filter: ClipboardSearchFilter())
+        // `$items` emits the NEW array (willSet semantics), so filter the published value rather than
+        // `store.items`, which still holds the old one at that moment.
+        itemsSubscription = store.$items.sink { [weak self] items in
+            self?.refilter(items: items)
+        }
     }
 
-    var filteredItems: [ClipboardItem] {
-        store.matches(query: query, filter: filter)
+    private func refilter(items: [ClipboardItem]? = nil) {
+        filteredItems = ClipSearch.filter(items ?? store.items, query: query, filter: filter)
     }
 
     /// The card a paste/Return acts on: the explicit selection, else the top result.

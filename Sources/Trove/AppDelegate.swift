@@ -48,6 +48,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updaterController = UpdaterController()
 
         configureMenuBar()
+
+        // Image clips stored before thumbnails existed get theirs generated once, off-main, after the
+        // launch path has settled.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            self?.store.backfillThumbnails()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

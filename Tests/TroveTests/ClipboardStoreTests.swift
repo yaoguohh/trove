@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import Testing
 @testable import Trove
@@ -481,5 +482,67 @@ struct PreviewWindowBoundedBodyTests {
         #expect(result.isClipped == true)
         #expect(result.text.utf8.count <= PreviewWindowController.previewWindowCap)
         #expect(!result.text.hasSuffix("\u{FFFD}")) // partial trailing scalar was trimmed
+    }
+}
+
+@MainActor
+struct ClipboardStoreOrderInvariantTests {
+    @Test func deletePinboardRestoresDisplayOrder() {
+        let (store, _) = makeTempStore()
+        store.add(text: "oldest", sourceApp: "X")
+        store.add(text: "middle", sourceApp: "X")
+        store.add(text: "newest", sourceApp: "X")
+        let board = store.pinboards[0]
+        let oldest = store.items.first { $0.text == "oldest" }!
+        store.move(oldest, to: board)
+        #expect(store.items.first?.text == "oldest")   // pinned block leads
+
+        store.deletePinboard(board)
+        // Un-pinned → back into the time-ordered block, newest first. `ClipSearch` relies on this.
+        #expect(store.items.map(\.text) == ["newest", "middle", "oldest"])
+    }
+
+    @Test func addPublishesItemsExactlyOnce() {
+        let (store, _) = makeTempStore()
+        var emissions = 0
+        let subscription = store.$items.sink { _ in emissions += 1 }
+        defer { subscription.cancel() }
+        #expect(emissions == 1)   // the current value on subscribe
+
+        store.add(text: "one publish, not three", sourceApp: "X")
+        #expect(emissions == 2)
+
+        store.addPreparedImage(
+            id: UUID(),
+            files: ImageIngest.StoredFiles(imageFileName: "x.png", thumbnailFileName: nil),
+            sourceApp: "X", sourceBundleIdentifier: nil, sourceAppPath: nil, createdAt: Date()
+        )
+        #expect(emissions == 3)
+    }
+
+    @Test func preparedImageSortsByCaptureTime() {
+        let (store, _) = makeTempStore()
+        let captured = Date()
+        store.add(text: "copied after the screenshot", sourceApp: "X")
+        // The image finished encoding after the text arrived, but was captured before it.
+        store.addPreparedImage(
+            id: UUID(),
+            files: ImageIngest.StoredFiles(imageFileName: "shot.png", thumbnailFileName: "shot.thumb.png"),
+            sourceApp: "X", sourceBundleIdentifier: nil, sourceAppPath: nil, createdAt: captured
+        )
+        #expect(store.items.map(\.text) == ["copied after the screenshot", "Image"])
+        #expect(store.items[1].thumbnailFileName == "shot.thumb.png")
+    }
+
+    @Test func thumbnailFileNameRoundTripsThroughHistoryJSON() throws {
+        let (store, url) = makeTempStore()
+        store.addPreparedImage(
+            id: UUID(),
+            files: ImageIngest.StoredFiles(imageFileName: "a.png", thumbnailFileName: "a.thumb.png"),
+            sourceApp: "X", sourceBundleIdentifier: nil, sourceAppPath: nil, createdAt: Date()
+        )
+        store.flush()
+        let reloaded = ClipboardStore(storeURL: url)
+        #expect(reloaded.items.first?.thumbnailFileName == "a.thumb.png")
     }
 }

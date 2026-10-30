@@ -27,7 +27,8 @@ natively in Swift / AppKit + SwiftUI.
 - Right-click the menu-bar icon for a compact menu — shortcut, link previews, and background mode, all inline (no separate Preferences window)
 - Link title + favicon previews with local metadata caching
 - In-app auto-updates via [Sparkle](https://sparkle-project.org)
-- Local JSON storage in `~/Library/Application Support/Trove/`
+- Local JSON storage in `~/Library/Application Support/Trove/`; history keeps 500 clips by default (`defaults write io.github.yaoguohh.trove Trove.maxItems 1000` to change, 50–5000)
+- Ignores transient and concealed pasteboard writes (password managers, text expanders) — secrets never reach the history file
 
 ## Keyboard
 
