@@ -89,12 +89,12 @@ struct StatusMenuView: View {
 
     private var shortcutRow: some View {
         HStack(spacing: 10) {
-            Image(systemName: "command").font(.system(size: 12)).frame(width: 17).foregroundStyle(Theme.Text.t3)
+            rowIcon("command")
             VStack(alignment: .leading, spacing: 1) {
-                Text(String(localized: "Shortcut")).font(.system(size: 12)).foregroundStyle(Theme.Text.t1)
+                Text("Shortcut").font(.system(size: 12)).foregroundStyle(Theme.Text.t1)
                 if !shortcutRegistered {
                     // Another app already owns this combination; the panel can't be summoned with it.
-                    Text(String(localized: "In use by another app")).font(.system(size: 10)).foregroundStyle(Theme.Semantic.warn)
+                    Text("In use by another app").font(.system(size: 10)).foregroundStyle(Theme.Semantic.warn)
                 }
             }
             Spacer(minLength: 8)
@@ -140,7 +140,7 @@ struct StatusMenuView: View {
         Button(action: onShow) {
             HStack(spacing: 6) {
                 Image(systemName: "rectangle.stack.fill").font(.system(size: 11.5, weight: .semibold))
-                Text(String(localized: "Show Trove")).font(.system(size: 12, weight: .semibold))
+                Text("Show Trove").font(.system(size: 12, weight: .semibold))
                 Spacer()
             }
             .foregroundStyle(Theme.accent)
@@ -176,8 +176,7 @@ struct StatusMenuView: View {
     private func actionRow(icon: String, title: String, action: @escaping () -> Void) -> some View {
         HoverRow {
             HStack(spacing: 10) {
-                Image(systemName: icon).font(.system(size: 12)).frame(width: 17).foregroundStyle(Theme.Text.t3)
-                Text(title).font(.system(size: 12)).foregroundStyle(Theme.Text.t1)
+                rowLabel(icon: icon, title: title)
                 Spacer()
             }
         } action: { action() }
@@ -186,8 +185,7 @@ struct StatusMenuView: View {
     private func toggleRow(icon: String, title: String, isOn: Binding<Bool>) -> some View {
         HoverRow {
             HStack(spacing: 10) {
-                Image(systemName: icon).font(.system(size: 12)).frame(width: 17).foregroundStyle(Theme.Text.t3)
-                Text(title).font(.system(size: 12)).foregroundStyle(Theme.Text.t1)
+                rowLabel(icon: icon, title: title)
                 Spacer()
                 MiniSwitch(isOn: isOn.wrappedValue)
             }
@@ -196,16 +194,26 @@ struct StatusMenuView: View {
         }
     }
 
+    private func rowIcon(_ name: String) -> some View {
+        Image(systemName: name).font(.system(size: 12)).frame(width: 17).foregroundStyle(Theme.Text.t3)
+    }
+
+    @ViewBuilder
+    private func rowLabel(icon: String, title: String) -> some View {
+        rowIcon(icon)
+        Text(title).font(.system(size: 12)).foregroundStyle(Theme.Text.t1)
+    }
+
     // MARK: Footer
 
     private var footer: some View {
         HStack(spacing: 12) {
-            Text(String(localized: "Local · MIT")).font(.system(size: 10)).foregroundStyle(Theme.Text.t3)
+            Text("Local · MIT").font(.system(size: 10)).foregroundStyle(Theme.Text.t3)
             Spacer()
             Button(action: onQuit) {
                 HStack(spacing: 5) {
                     Image(systemName: "power").font(.system(size: 11, weight: .medium))
-                    Text(String(localized: "Quit")).font(.system(size: 11))
+                    Text("Quit").font(.system(size: 11))
                 }
                 .foregroundStyle(Theme.Text.t2)
             }

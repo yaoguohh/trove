@@ -154,8 +154,8 @@ struct PinboardStrip: View {
 }
 
 /// Collects each pinboard chip's laid-out frame (in the strip's coordinate space) so the
-/// gesture reorder can tell which slot the dragged chip is over. `.offset` is a render-time
-/// transform, so the reported frames stay at the stable base slots during a drag.
+/// gesture reorder can tell which slot the dragged chip is over. The frames include a chip's own
+/// `.offset`, which is why the strip stops reading them while a drag is in progress.
 private struct ChipFramePreferenceKey: PreferenceKey {
     static var defaultValue: [UUID: CGRect] { [:] }
     static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {

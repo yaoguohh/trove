@@ -17,16 +17,26 @@ struct ImagePreview: View {
                     // A hairline keeps a white-background image from reading as a hole in the card.
                     .overlay { RoundedRectangle(cornerRadius: Theme.Radius.media, style: .continuous).strokeBorder(Theme.Line.l2, lineWidth: 1) }
             } else {
-                VStack(spacing: 8) {
-                    Image(systemName: "photo")
-                        .font(.system(size: 28, weight: .medium))
-                    Text("Image unavailable")
-                        .font(.system(size: 13, weight: .semibold))
-                }
-                .foregroundStyle(Theme.Text.t3)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ImageUnavailableView(symbolSize: 28, textSize: 13)
             }
         }
+    }
+}
+
+/// What every image surface (card, peek, inspect window) shows when the clip's file is gone.
+struct ImageUnavailableView: View {
+    let symbolSize: CGFloat
+    let textSize: CGFloat
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "photo")
+                .font(.system(size: symbolSize, weight: .medium))
+            Text("Image unavailable")
+                .font(.system(size: textSize, weight: .semibold))
+        }
+        .foregroundStyle(Theme.Text.t3)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -142,14 +152,10 @@ struct HighlightedText: View {
         Text(attributedText)
     }
 
-    /// Belt-and-suspenders bound on the string an `AttributedString` is built from. Card bodies are
-    /// already fed `item.preview` (capped to `displayPreviewCap`), but `HighlightedText` is also used
-    /// for link titles/hosts and could be reused, so cap here too. `prefix(_:)` is O(cap) regardless
-    /// of the source length, so building the attributed copy can never scan a multi-MB string.
-    private static let highlightDefensiveCap = 8_000
-
     private var attributedText: AttributedString {
-        let capped = String(text.prefix(Self.highlightDefensiveCap))
+        // Card bodies are already `item.preview` (capped), but link titles and hosts arrive here too;
+        // the same cap keeps building the attributed copy O(cap) for any input.
+        let capped = String(text.prefix(ClipboardItem.displayPreviewCap))
         var attributed = AttributedString(capped)
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !needle.isEmpty else { return attributed }

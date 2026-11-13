@@ -18,10 +18,11 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
         self.files = files
     }
 
-    /// UTF-8 byte budget for the inspect window's plain-text `ScrollView`, which lays out the WHOLE
-    /// string (SwiftUI `Text` has no viewport virtualization). The window shows the full clip up to
-    /// this guard and a notice beyond it; copy/paste still deliver the complete content.
-    static let previewWindowCap = 256 * 1024
+    /// UTF-8 byte budget for anything the inspect window lays out in full — the plain-text
+    /// `ScrollView` (SwiftUI `Text` has no viewport virtualization) and JSON pretty-printing. The
+    /// window shows the clip up to this guard and a notice beyond it; copy/paste still deliver the
+    /// complete content.
+    nonisolated static let previewWindowCap = 256 * 1024
 
     /// Bound the inspect-window text to `previewWindowCap` UTF-8 bytes, returning whether it was
     /// clipped (so the view can show a notice). Truly O(cap): for a spilled clip it reads at most
@@ -53,7 +54,7 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
 
     func show(_ item: ClipboardItem, near screen: NSScreen?) {
         let image: NSImage? = item.kind == .image ? ImageCache.image(for: item, in: files) : nil
-        let visible = (screen ?? NSScreen.main ?? NSScreen.screens.first)?.visibleFrame
+        let visible = NSScreen.preferring(screen)?.visibleFrame
             ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let size = Self.contentSize(for: item, image: image, in: visible)
 
@@ -106,7 +107,7 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
         ))
 
         windows.insert(window)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         window.makeKeyAndOrderFront(nil)
     }
 
@@ -120,13 +121,12 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
     /// Text: a comfortable reading column with a sensible default height; content scrolls.
     private static func contentSize(for item: ClipboardItem, image: NSImage?, in visible: NSRect) -> NSSize {
         if let image, image.size.width > 0, image.size.height > 0 {
-            let maxW = visible.width * 0.80
-            let maxH = visible.height * 0.85
-            let fit = min(maxW / image.size.width, maxH / image.size.height)
-            let scale = min(fit, 1.0)
-            let width = max(image.size.width * scale, 240)
-            let height = max(image.size.height * scale, 180)
-            return NSSize(width: width.rounded(), height: height.rounded())
+            let fitted = ImageFit.size(
+                of: image.size,
+                within: CGSize(width: visible.width * 0.80, height: visible.height * 0.85),
+                atLeast: CGSize(width: 240, height: 180)
+            )
+            return NSSize(width: fitted.width.rounded(), height: fitted.height.rounded())
         }
         let width = min(max(560, visible.width * 0.42), 760)
         let height = min(max(360, visible.height * 0.55), visible.height * 0.85)
@@ -134,9 +134,7 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
     }
 
     private static func title(for item: ClipboardItem) -> String {
-        guard item.kind != .image else { return item.kind.title }
-        let trimmed = item.preview.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? item.kind.title : String(trimmed.prefix(60))
+        String(item.displayTitle.prefix(60))
     }
 
     /// Flip a preview window between a normal, Mission-Control-visible window and a floating,
@@ -151,13 +149,24 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
     }
 }
 
-/// The inspect window. Esc and ⌘W close it (via `StandaloneWindow`); ⌘C/⌘A route into the selectable
-/// text (via `EditingShortcuts`) — the menu-bar app has no Edit/File menu to supply either. The panel's
-/// key monitor bails when the panel isn't key, so Esc reaches this window instead of dismissing the panel.
-private final class PreviewWindow: StandaloneWindow {
+/// The inspect window. Trove has no main menu, so nothing supplies the usual File/Edit key
+/// equivalents: Esc and ⌘W close it here, and ⌘C/⌘A route into the selectable text via
+/// `EditingShortcuts`. The panel's key monitor bails when the panel isn't key, so Esc reaches this
+/// window instead of dismissing the panel.
+private final class PreviewWindow: NSWindow {
+    /// Esc → close (the standard cancel action), unless a subview claimed the key first.
+    override func cancelOperation(_ sender: Any?) {
+        performClose(sender)
+    }
+
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        // Editing shortcuts (⌘C/⌘A) first; ⌘W and anything else fall through to StandaloneWindow.
-        EditingShortcuts.route(event) || super.performKeyEquivalent(with: event)
+        if EditingShortcuts.route(event) { return true }
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+           event.charactersIgnoringModifiers == "w" {
+            performClose(self)
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
     }
 }
 
@@ -182,15 +191,8 @@ private struct ClipPreviewView: View {
                 .background(Theme.Surface.coal)
         } else if item.kind == .image {
             // An image item whose file went missing — show a clear placeholder, not blank.
-            VStack(spacing: 10) {
-                Image(systemName: "photo")
-                    .font(.system(size: 40, weight: .medium))
-                Text("Image unavailable")
-                    .font(.system(size: 14, weight: .semibold))
-            }
-            .foregroundStyle(Theme.Text.t3)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Theme.Surface.coal)
+            ImageUnavailableView(symbolSize: 40, textSize: 14)
+                .background(Theme.Surface.coal)
         } else {
             // Detection runs on the bounded inline `text` (cheap); each branch is a pure display
             // layer. Rich previews live ONLY here, never per-card.

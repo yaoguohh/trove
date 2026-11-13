@@ -4,7 +4,7 @@ import AppKit
 /// PNG on every render (hover/selection animations re-evaluate bodies constantly).
 ///
 /// Two tiers, because they have different lifetimes:
-/// - `thumbnails` backs the cards. Thumbnails are ≤640px (see `ImageIngest`), so even a full strip
+/// - `thumbnails` backs the cards. Thumbnails are small (`ImageIngest.thumbnailMaxPixelSize`), so even a full strip
 ///   of image cards decodes to a few MB; this tier survives hide/show so re-summoning is instant.
 /// - `fullImages` backs the peek bubble, the inspect window and drag-out. A single 4K screenshot
 ///   decodes to 33 MB, so this tier is purged whenever the panel hides — the footprint of a
@@ -69,5 +69,18 @@ enum ImageCache {
             maxPixels = max(0, Int(image.size.width * image.size.height))
         }
         return maxPixels * 4
+    }
+}
+
+/// Sizing an image for display: aspect-preserving, never upscaled past 1:1, with a floor so a tiny
+/// image doesn't become a sliver, and clamped back into the bounds.
+enum ImageFit {
+    static func size(of image: CGSize, within bounds: CGSize, atLeast floor: CGSize) -> CGSize {
+        guard image.width > 0, image.height > 0 else { return floor }
+        let scale = min(bounds.width / image.width, bounds.height / image.height, 1)
+        return CGSize(
+            width: min(bounds.width, max(floor.width, image.width * scale)),
+            height: min(bounds.height, max(floor.height, image.height * scale))
+        )
     }
 }

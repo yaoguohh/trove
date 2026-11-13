@@ -25,6 +25,9 @@ final class ClipboardPanelController {
     private var isHiding = false
     private var visibilityGeneration = 0
 
+    /// The smallest the panel ever gets; `position` never lays it out narrower.
+    static let minimumSize = NSSize(width: 720, height: 240)
+
     /// Panel non-card width (toolbar + side insets around the card strip). Used to derive the
     /// ⌘←/⌘→ page size in `visibleCardCount()`.
     private static let chromeWidth: CGFloat = 96
@@ -72,13 +75,8 @@ final class ClipboardPanelController {
         panel.orderFrontRegardless()
         panel.makeKey()
         installClickAwayMonitor()
-        // Fade the STATIONARY window in on Tern's out curve (alpha on a stationary behind-window blur
-        // is cached and cheap; moving it is not). The content pops in on top — ClipboardPanelView.popIn.
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = Theme.Motion.seconds(Theme.Motion.Duration.appear)
-            context.timingFunction = Theme.Motion.outTiming
-            panel.animator().alphaValue = 1
-        }
+        // The content pops in on top of the fading window — ClipboardPanelView.popIn.
+        panel.fadeIn()
         // Fresh state on every (re)show. The SwiftUI view focuses the search field (on showToken) so
         // typing filters immediately; navigation/action keys route through the window-level monitor.
         model.prepareForShow()
@@ -179,7 +177,7 @@ final class ClipboardPanelController {
         // leave focus unstable across show/hide; this panel is transient, so opt out.
         panel.isRestorable = false
         panel.hidesOnDeactivate = false
-        panel.minSize = NSSize(width: 720, height: 240)
+        panel.minSize = Self.minimumSize
         panel.standardWindowButton(.closeButton)?.isHidden = true
         panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
         panel.standardWindowButton(.zoomButton)?.isHidden = true
@@ -270,9 +268,7 @@ final class ClipboardPanelController {
     /// window, which on a background-app hotkey summon is the wrong monitor (or nil).
     private func targetScreen() -> NSScreen? {
         let mouse = NSEvent.mouseLocation
-        return NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) }
-            ?? NSScreen.main
-            ?? NSScreen.screens.first
+        return NSScreen.preferring(NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) })
     }
 
     private func position(_ panel: NSPanel) {
@@ -285,14 +281,14 @@ final class ClipboardPanelController {
         // Every display fills the width edge-to-edge; a hair of side margin keeps the rounded
         // corners + shadow readable. (When there are few clips the cards left-align and the strip's
         // trailing space stays empty — the same look the panel has always had on wide displays.)
-        // Never below the 720pt minSize, or AppKit would clamp the width while the origin below stays
+        // Never below the minimum width, or AppKit would clamp the width while the origin below stays
         // centered on the smaller value, mis-centering / overflowing the panel on a very narrow display.
-        let width = max(720, vis.width - 16)
+        let width = max(Self.minimumSize.width, vis.width - 16)
         // Taller panel so the enlarged cards can reach their height cap on a big display.
         let height = min(376, max(256, vis.height * 0.26))
 
         // Center horizontally, but never let the left edge fall off-screen: on a display narrower than
-        // the 720pt floor the centered origin would be negative, hiding the leading cards. Pinning to
+        // the minimum width the centered origin would be negative, hiding the leading cards. Pinning to
         // vis.minX keeps the content (which left-aligns) visible even if the right edge then overflows.
         let origin = NSPoint(
             x: (max(vis.minX, vis.midX - width / 2)).rounded(),

@@ -111,14 +111,9 @@ enum SourceAppIconProvider {
                 let brightness = max(color.redComponent, color.greenComponent, color.blueComponent)
                 guard alpha > 0.20, saturation > 0.16, brightness > 0.18, brightness < 0.96 else { continue }
 
-                var hue: CGFloat = 0
-                var hueSaturation: CGFloat = 0
-                var hueBrightness: CGFloat = 0
-                var hueAlpha: CGFloat = 0
-                color.getHue(&hue, saturation: &hueSaturation, brightness: &hueBrightness, alpha: &hueAlpha)
-
-                let bucketIndex = min(buckets.count - 1, max(0, Int((hue * CGFloat(buckets.count)).rounded(.down))))
-                let pixelWeight = alpha * max(0.20, hueSaturation) * max(0.28, hueBrightness)
+                let hsb = color.hsb
+                let bucketIndex = min(buckets.count - 1, max(0, Int((hsb.hue * CGFloat(buckets.count)).rounded(.down))))
+                let pixelWeight = alpha * max(0.20, hsb.saturation) * max(0.28, hsb.brightness)
                 buckets[bucketIndex].add(color: color, weight: pixelWeight)
             }
         }
@@ -144,16 +139,11 @@ enum SourceAppIconProvider {
 
     private static func normalized(_ color: NSColor) -> NSColor {
         guard let deviceColor = color.usingColorSpace(.deviceRGB) else { return color }
-        var hue: CGFloat = 0
-        var saturation: CGFloat = 0
-        var brightness: CGFloat = 0
-        var alpha: CGFloat = 0
-        deviceColor.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
-
+        let hsb = deviceColor.hsb
         return NSColor(
-            calibratedHue: hue,
-            saturation: min(0.88, max(0.46, saturation)),
-            brightness: min(0.82, max(0.42, brightness)),
+            calibratedHue: hsb.hue,
+            saturation: min(0.88, max(0.46, hsb.saturation)),
+            brightness: min(0.82, max(0.42, hsb.brightness)),
             alpha: 1
         )
     }
@@ -179,27 +169,18 @@ private struct ColorBucket {
 }
 
 private extension NSColor {
+    /// Hue, saturation and brightness (an RGB-compatible color is required).
+    var hsb: (hue: CGFloat, saturation: CGFloat, brightness: CGFloat) {
+        var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
+        getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
+        return (hue, saturation, brightness)
+    }
+
     func hueDistance(from other: NSColor) -> CGFloat {
-        guard
-            let lhs = usingColorSpace(.deviceRGB),
-            let rhs = other.usingColorSpace(.deviceRGB)
-        else {
+        guard let lhs = usingColorSpace(.deviceRGB), let rhs = other.usingColorSpace(.deviceRGB) else {
             return 1
         }
-
-        var leftHue: CGFloat = 0
-        var leftSaturation: CGFloat = 0
-        var leftBrightness: CGFloat = 0
-        var leftAlpha: CGFloat = 0
-        lhs.getHue(&leftHue, saturation: &leftSaturation, brightness: &leftBrightness, alpha: &leftAlpha)
-
-        var rightHue: CGFloat = 0
-        var rightSaturation: CGFloat = 0
-        var rightBrightness: CGFloat = 0
-        var rightAlpha: CGFloat = 0
-        rhs.getHue(&rightHue, saturation: &rightSaturation, brightness: &rightBrightness, alpha: &rightAlpha)
-
-        let distance = abs(leftHue - rightHue)
+        let distance = abs(lhs.hsb.hue - rhs.hsb.hue)
         return min(distance, 1 - distance)
     }
 }

@@ -112,11 +112,7 @@ final class StatusMenuController {
         NSApp.activate()
         panel.alphaValue = 0
         panel.makeKeyAndOrderFront(nil)
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = Theme.Motion.seconds(Theme.Motion.Duration.appear)
-            context.timingFunction = Theme.Motion.outTiming
-            panel.animator().alphaValue = 1
-        }
+        panel.fadeIn()
 
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             MainActor.assumeIsolated { self?.close() }

@@ -9,7 +9,7 @@ enum RichPreviewContent: Equatable {
     case plain             // everything else — render as bounded plain text
 }
 
-/// What the "expand" affordance (the peek bubble's ↗ button and the card's right-click Preview) should
+/// What expanding a clip (clicking the peek bubble, or the card's right-click Preview) should
 /// do for a clip. A single bare URL opens in the default browser — rendering a web page inside a native
 /// card just duplicates the browser — while everything else opens the in-app inspect window.
 enum ExpandAction: Equatable {
@@ -31,7 +31,7 @@ enum RichPreviewRenderer {
     /// Pretty-print valid JSON natively (zero dependencies). Gated three ways so it never does heavy
     /// work on non-JSON or oversized input: first char must be `{`/`[`, the UTF-8 size must be within
     /// `maxBytes`, and it must actually parse. Returns `nil` (→ render as plain) otherwise.
-    static func prettyJSON(_ text: String, maxBytes: Int = 256 * 1024) -> String? {
+    static func prettyJSON(_ text: String, maxBytes: Int = PreviewWindowController.previewWindowCap) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let first = trimmed.first, first == "{" || first == "[" else { return nil }
         let data = Data(trimmed.utf8)

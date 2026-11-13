@@ -241,8 +241,9 @@ struct ContentSearchCapTests {
         let filler = String(repeating: "x", count: 20_000 + 200)
         store.add(text: "FINDME" + filler + "TAILONLY", sourceApp: "X")
 
-        #expect(!store.matches(query: "FINDME").isEmpty)  // in the scanned prefix → found
-        #expect(store.matches(query: "TAILONLY").isEmpty) // past the cap → not surfaced (documented)
+        let filter = ClipboardSearchFilter()
+        #expect(!ClipSearch.filter(store.items, query: "FINDME", filter: filter).isEmpty)  // in the scanned prefix → found
+        #expect(ClipSearch.filter(store.items, query: "TAILONLY", filter: filter).isEmpty) // past the cap → not surfaced
     }
 }
 

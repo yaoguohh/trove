@@ -408,12 +408,6 @@ final class ClipboardStore: ObservableObject {
         scheduleSave()
     }
 
-    /// Filter the (already display-ordered) history. The panel keeps its own memoised copy via
-    /// `PanelViewModel`; this entry point serves one-off callers (the status menu count, tests).
-    func matches(query: String, filter: ClipboardSearchFilter = ClipboardSearchFilter()) -> [ClipboardItem] {
-        ClipSearch.filter(items, query: query, filter: filter)
-    }
-
     /// Synchronously writes the current history, superseding any pending debounced save. Called on
     /// app termination so the last change is never lost.
     func flush() {

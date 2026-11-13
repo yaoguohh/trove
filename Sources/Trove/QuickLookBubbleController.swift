@@ -4,18 +4,17 @@ import SwiftUI
 /// A Finder-Quick-Look-style peek: pressing Space over the selected card pops a small bubble
 /// card ABOVE the panel — a rounded card with a little downward tail pointing at the panel —
 /// showing the item at a glance (image scaled to fit, or a text excerpt). It floats in its own
-/// borderless, NON-activating panel: clicking its one control (the expand button) doesn't make it
-/// key, so the main panel keeps focus (the always-first-responder search field and the controller's
-/// key monitor must keep working while the bubble is up). The expand button hands off to the
-/// full-size right-click "Preview" (PreviewWindowController) window for closer inspection.
+/// borderless, NON-activating panel: clicking it doesn't make it key, so the main panel keeps focus
+/// (the search field and the controller's key monitor keep working while the bubble is up). A click
+/// anywhere on the bubble hands off to the full-size inspect window (PreviewWindowController).
 @MainActor
 final class QuickLookBubbleController {
     private let files: ClipFiles
     private var window: NSPanel?
     /// Bumped on every present so the (persistent) bubble view replays its popIn.
     private let popState = BubblePopState()
-    /// Invoked when the bubble's expand button is tapped — opens the full standalone preview for the
-    /// peeked item. Wired by ClipboardPanelController.
+    /// Invoked when the bubble is clicked — opens the full standalone preview for the peeked item.
+    /// Wired by ClipboardPanelController.
     var onExpand: ((ClipboardItem) -> Void)?
 
     /// Transparent margin baked into the window around the bubble so the drop shadow (drawn in
@@ -45,7 +44,7 @@ final class QuickLookBubbleController {
         if isVisible {
             hide()
         } else {
-            present(model: model, over: panel, animate: false)
+            present(model: model, over: panel)
         }
     }
 
@@ -53,35 +52,27 @@ final class QuickLookBubbleController {
         window?.orderOut(nil)
     }
 
-    /// The expand button was tapped: dismiss the peek and hand off to the full preview window.
+    /// The bubble was clicked: dismiss the peek and hand off to the full preview window.
     private func expandTapped(_ item: ClipboardItem) {
         let action = onExpand
         hide()
         action?(item)
     }
 
-    private func present(model: PanelViewModel, over panel: NSWindow, animate: Bool) {
+    /// Shown only while hidden (`toggle`); any selection change hides the bubble instead of moving it.
+    private func present(model: PanelViewModel, over panel: NSWindow) {
         // Nothing selected (empty results) → there's nothing to peek.
         guard let item = model.selectedItem else { hide(); return }
         if window == nil { createWindow(model: model) }
         guard let window else { return }
 
-        let frame = frame(for: item, over: panel)
-        if window.isVisible {
-            window.setFrame(frame, display: true, animate: animate)
-        } else {
-            window.setFrame(frame, display: false)
-            window.alphaValue = 0
-            window.orderFront(nil)
-            // Tern's popIn: the window fades (cheap: no blur to recompute) while the bubble content
-            // scales from Theme.Motion.scale and rises 3pt — see QuickLookBubbleView.
-            popState.generation &+= 1
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = Theme.Motion.seconds(Theme.Motion.Duration.appear)
-                context.timingFunction = Theme.Motion.outTiming
-                window.animator().alphaValue = 1
-            }
-        }
+        window.setFrame(frame(for: item, over: panel), display: false)
+        window.alphaValue = 0
+        window.orderFront(nil)
+        // Tern's popIn: the window fades while the bubble content scales up and rises 3pt — see
+        // QuickLookBubbleView.
+        popState.generation &+= 1
+        window.fadeIn()
     }
 
     private func createWindow(model: PanelViewModel) {
@@ -94,9 +85,9 @@ final class QuickLookBubbleController {
         hosting.sizingOptions = []
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 10, height: 10),
-            // .nonactivatingPanel + becomesKeyOnlyIfNeeded: the bubble accepts a click on its expand
-            // button without becoming key, so the main panel keeps focus and its key monitor keeps
-            // receiving keyDowns while the peek is up.
+            // .nonactivatingPanel + becomesKeyOnlyIfNeeded: the bubble accepts a click without
+            // becoming key, so the main panel keeps focus and its key monitor keeps receiving keyDowns
+            // while the peek is up.
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -106,7 +97,7 @@ final class QuickLookBubbleController {
         panel.hasShadow = false // the shadow is drawn in SwiftUI so it follows the bubble outline
         // One level above the main panel (also .floating) so the bubble is always on top of it.
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
-        // Mouse-enabled (for the expand button) but never steals key from the main panel.
+        // Mouse-enabled (the bubble is clickable) but never steals key from the main panel.
         panel.ignoresMouseEvents = false
         panel.becomesKeyOnlyIfNeeded = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
@@ -157,14 +148,13 @@ final class QuickLookBubbleController {
         }
 
         if item.kind == .image {
-            if let image = ImageCache.image(for: item, in: files),
-               image.size.width > 0, image.size.height > 0 {
-                let scale = min(maxContentW / image.size.width, maxContentH / image.size.height, 1.0)
-                // Floors stop a tiny image becoming a sliver; the outer min() re-clamps to the caps
-                // so a short space above the panel / a narrow screen can't push the bubble oversized.
-                let w = min(maxContentW, max(200, image.size.width * scale))
-                let h = min(maxContentH, max(130, image.size.height * scale))
-                return wrap(w, h)
+            if let image = ImageCache.image(for: item, in: files), image.size.width > 0, image.size.height > 0 {
+                let fitted = ImageFit.size(
+                    of: image.size,
+                    within: CGSize(width: maxContentW, height: maxContentH),
+                    atLeast: CGSize(width: 200, height: 130)
+                )
+                return wrap(fitted.width, fitted.height)
             }
             // Image kind but the backing file is gone → size for the "Image unavailable" placeholder
             // (rendered in QuickLookBubbleView), not for the empty text, so it isn't clipped.
@@ -183,14 +173,14 @@ final class QuickLookBubbleController {
     }
 }
 
-/// The bubble's SwiftUI content. Observes the panel model so the peek follows the selection (the
-/// controller resizes the window; this view swaps the content) and renders the rounded card + tail.
 /// Presentation counter the controller bumps on each show so the bubble view replays its entrance.
 @MainActor
 final class BubblePopState: ObservableObject {
     @Published var generation = 0
 }
 
+/// The bubble's SwiftUI content: the selected clip in a rounded card with a tail. The controller
+/// closes the bubble on any selection change, so it only ever shows the card it was opened on.
 private struct QuickLookBubbleView: View {
     @Environment(\.clipFiles) private var files
     @ObservedObject var model: PanelViewModel
@@ -260,12 +250,7 @@ private struct QuickLookBubbleView: View {
                 .scaledToFit()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if item.kind == .image {
-            VStack(spacing: 8) {
-                Image(systemName: "photo").font(.system(size: 30, weight: .medium))
-                Text("Image unavailable").font(.system(size: 12, weight: .semibold))
-            }
-            .foregroundStyle(Theme.Text.t3)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ImageUnavailableView(symbolSize: 30, textSize: 12)
         } else {
             Text(item.text.prefix(QuickLookBubbleController.bubbleTextCap))
                 .font(.system(size: 13))

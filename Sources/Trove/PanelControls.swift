@@ -35,8 +35,7 @@ struct HistorySearchField: View {
 
             if !query.isEmpty {
                 Button {
-                    query = ""
-                    activate()
+                    query = ""   // the onChange(of: query) above re-activates the history scope
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 12, weight: .semibold))

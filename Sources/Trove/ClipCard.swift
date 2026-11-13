@@ -69,9 +69,9 @@ struct ClipCard: View {
 
     /// What VoiceOver reads for the card: name/kind, source app, then the content excerpt.
     private var accessibilityDescription: String {
-        let name = item.title ?? item.kind.title
         let excerpt = item.kind == .image ? "" : String(item.preview.prefix(200))
-        return excerpt.isEmpty ? "\(name), \(sourceStyle.displayName)" : "\(name), \(sourceStyle.displayName): \(excerpt)"
+        let head = "\(item.name), \(sourceStyle.displayName)"
+        return excerpt.isEmpty ? head : "\(head): \(excerpt)"
     }
 
     private var cardBody: some View {
@@ -211,8 +211,8 @@ private struct ClipCardHeader: View {
                         .onExitCommand(perform: onCancel) // Esc cancels
                 } else {
                     // A custom name (Rename) replaces the kind label; the kind is still conveyed by
-                    // the source icon. Untitled clips fall back to the kind ("Text", …).
-                    Text(item.title ?? item.kind.title)
+                    // the source icon.
+                    Text(item.name)
                         .font(titleFont)
                         .foregroundStyle(Theme.Text.t1)
                 }

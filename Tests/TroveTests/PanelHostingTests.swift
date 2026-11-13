@@ -23,8 +23,8 @@ struct PanelHostingTests {
         controller.show()
         #expect(controller.isVisible)
         #expect(hosting.rootView != nil)
-        #expect((hosting.window?.frame.width ?? 0) >= 720)
-        #expect((hosting.window?.frame.height ?? 0) >= 240)
+        #expect((hosting.window?.frame.width ?? 0) >= ClipboardPanelController.minimumSize.width)
+        #expect((hosting.window?.frame.height ?? 0) >= ClipboardPanelController.minimumSize.height)
         // SwiftUI hands the search field focus a few run-loop turns after the show; a fixed 100ms was
         // enough locally and flaky on a loaded CI runner, so wait for the condition instead.
         #expect(await eventually { hosting.window?.firstResponder is NSTextView })

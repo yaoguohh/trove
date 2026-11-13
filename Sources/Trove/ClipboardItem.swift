@@ -52,7 +52,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
     var sourceBundleIdentifier: String?
     var sourceAppPath: String?
     var imageFileName: String?
-    /// Card-sized rendition of an image clip (≤640px, see `ImageIngest`). Equal to `imageFileName`
+    /// Card-sized rendition of an image clip (`ImageIngest.thumbnailMaxPixelSize`). Equal to `imageFileName`
     /// when the original is already small; nil for legacy items until `backfillThumbnails` runs.
     var thumbnailFileName: String?
     var createdAt: Date
@@ -93,10 +93,17 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// The card's name: the user's custom title, else the kind label ("Text", "Link", …). Shown in the
+    /// card header and read first by VoiceOver.
+    var name: String {
+        if let title, !title.isEmpty { return title }
+        return kind.title
+    }
+
+    /// The best one-line label: the custom title, else the content preview, else the kind label. Used
+    /// where the card itself isn't visible — window titles, the drag placeholder.
     var displayTitle: String {
-        if let title, !title.isEmpty {
-            return title
-        }
+        if let title, !title.isEmpty { return title }
         return preview.isEmpty ? kind.title : preview
     }
 

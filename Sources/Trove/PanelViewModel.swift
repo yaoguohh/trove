@@ -26,7 +26,7 @@ final class PanelViewModel: ObservableObject {
     /// full history.
     @Published private(set) var filteredItems: [ClipboardItem] = []
     /// Called (on the main actor) whenever the selection changes from any source — keyboard, hover,
-    /// or programmatic — so the controller can keep an open Quick Look peek bubble re-fitted to it.
+    /// or programmatic. The controller uses it to close the peek bubble, which never follows a change.
     var onSelectionChange: (() -> Void)?
     /// Bumped on every panel (re)show to re-focus search, including a re-summon during
     /// the fade when content is still mounted and `onAppear` does not run again.

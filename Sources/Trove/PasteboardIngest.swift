@@ -93,7 +93,7 @@ struct PasteboardImagePayload: Sendable, Equatable {
 enum ImageIngest {
     /// Ceiling on a single pasteboard bitmap we are willing to store (CopyQ caps per-MIME reads too).
     static let maxImageBytes = 64 * 1024 * 1024
-    /// Card thumbnails are rendered at ≤ ~300×140pt (600×280px); 640px covers that with headroom.
+    /// Card thumbnails are rendered at ≤ ~300×140pt (600×280px); this covers that with headroom.
     static let thumbnailMaxPixelSize = 640
 
     enum ThumbnailResult: Equatable {

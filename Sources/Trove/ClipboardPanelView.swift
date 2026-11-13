@@ -22,7 +22,7 @@ struct ClipboardPanelView: View {
     // card scrolling under a stationary pointer can't hijack the keyboard selection.
     @State private var lastHoverLocation: CGPoint?
     // Inline title rename: the draft text. `model.renamingItemID` (shared with the controller) marks
-    // which card is being edited; the in-header editor (ClipCardHeader) owns its own focus.
+    // which card is being edited; focus moves to its editor through `focus` below.
     @State private var renameDraft = ""
     // Single focus authority: exactly one of `.search` / `.rename(id)` is focused at a time, so the
     // search field and a card's rename editor can never cross-talk (atomic mutual exclusion).
@@ -37,7 +37,6 @@ struct ClipboardPanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             pasteToolbar
-                .zIndex(0)
             timeline
                 .zIndex(2)
         }
@@ -45,7 +44,7 @@ struct ClipboardPanelView: View {
         // behind-window blur that must never be transformed per frame, so the window just fades in
         // (ClipboardPanelController.show) while the content arrives on top of it.
         .popIn(trigger: model.showToken, nudge: 4)
-        .frame(minWidth: 720, minHeight: 240)
+        .frame(minWidth: ClipboardPanelController.minimumSize.width, minHeight: ClipboardPanelController.minimumSize.height)
         .background {
             // Theme.Radius.panel, the same radius as the glass mask behind it.
             // No fill tint: the chrome is the material alone plus an l2 hairline and a one-pixel

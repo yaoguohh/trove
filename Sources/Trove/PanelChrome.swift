@@ -84,3 +84,22 @@ extension NSImage {
         return image
     }
 }
+
+extension NSWindow {
+    /// Fade a window that was ordered in at alpha 0 up to full opacity on the entrance curve. Only
+    /// alpha animates: a window backed by a behind-window blur must never move or resize per frame.
+    func fadeIn() {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Theme.Motion.seconds(Theme.Motion.Duration.appear)
+            context.timingFunction = Theme.Motion.outTiming
+            animator().alphaValue = 1
+        }
+    }
+}
+
+extension NSScreen {
+    /// `screen`, else the main screen, else any screen; nil only with no display at all.
+    static func preferring(_ screen: NSScreen?) -> NSScreen? {
+        screen ?? .main ?? screens.first
+    }
+}

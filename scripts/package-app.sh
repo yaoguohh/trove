@@ -47,17 +47,21 @@ fi
 
 swift "$ROOT_DIR/scripts/generate-app-icon.swift" "$ICON_FILE"
 
-# Localized resources (.lproj). macOS auto-selects the best match for the user's
-# preferred languages at runtime — no language detection code needed.
-for lproj in "$ROOT_DIR"/Localization/*.lproj; do
-  [ -d "$lproj" ] && cp -R "$lproj" "$RESOURCES_DIR/"
-done
-
 cp "$ROOT_DIR/scripts/Info.plist" "$CONTENTS_DIR/Info.plist"
+PLB=/usr/libexec/PlistBuddy
+BUNDLE_ID="$("$PLB" -c "Print :CFBundleIdentifier" "$CONTENTS_DIR/Info.plist")"
+
+# Localized resources (.lproj), declared in CFBundleLocalizations from the same directory list.
+# macOS picks the best match for the user's preferred languages at runtime.
+"$PLB" -c "Add :CFBundleLocalizations array" "$CONTENTS_DIR/Info.plist"
+for lproj in "$ROOT_DIR"/Localization/*.lproj; do
+  [ -d "$lproj" ] || continue
+  cp -R "$lproj" "$RESOURCES_DIR/"
+  "$PLB" -c "Add :CFBundleLocalizations: string $(basename "$lproj" .lproj)" "$CONTENTS_DIR/Info.plist"
+done
 
 # Per-build keys on top of the base plist: version (Sparkle compares CFBundleVersion) and Sparkle's
 # auto-update settings (SUPublicEDKey omitted cleanly when unset).
-PLB=/usr/libexec/PlistBuddy
 "$PLB" -c "Add :CFBundleShortVersionString string $MARKETING_VERSION" "$CONTENTS_DIR/Info.plist"
 "$PLB" -c "Add :CFBundleVersion string $BUILD_VERSION" "$CONTENTS_DIR/Info.plist"
 "$PLB" -c "Add :SUFeedURL string $SU_FEED_URL" "$CONTENTS_DIR/Info.plist"
@@ -97,7 +101,7 @@ fi
 # No `--deep`: the nested Sparkle code is already signed above.
 if [[ "$SIGN_ID" == "-" ]]; then
   codesign --force --sign - \
-    --requirements '=designated => identifier "io.github.yaoguohh.trove"' \
+    --requirements "=designated => identifier \"$BUNDLE_ID\"" \
     "$APP_DIR" >/dev/null
 else
   codesign --force --sign "$SIGN_ID" "$APP_DIR" >/dev/null
