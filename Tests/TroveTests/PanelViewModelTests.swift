@@ -84,3 +84,35 @@ struct PanelViewModelSelectionTests {
         #expect(fired == afterFirst + 1)
     }
 }
+
+@MainActor
+struct PanelViewModelActionTests {
+    @Test func queryChangeSelectsTheTopResult() {
+        let model = makeModel(itemCount: 4)
+        model.moveSelection(by: 2)
+        model.query = "item"
+        #expect(model.selectedID == model.filteredItems.first?.id)
+    }
+
+    @Test func deleteSelectsTheNeighborAtTheSamePosition() {
+        let model = makeModel(itemCount: 4)   // item-3, item-2, item-1, item-0
+        model.selectedID = model.filteredItems[1].id
+        model.delete(model.filteredItems[1])
+        #expect(model.filteredItems.map(\.text) == ["item-3", "item-1", "item-0"])
+        #expect(model.selectedItem?.text == "item-1")
+    }
+
+    @Test func undoResetsAFilterThatWouldHideTheRestoredCard() {
+        let model = makeModel(itemCount: 2)
+        let board = model.store.pinboards[0]
+        model.store.move(model.filteredItems[0], to: board)
+        let loose = model.filteredItems.first { $0.pinboardID == nil }!
+        model.delete(loose)
+        model.filter.pinboardID = board.id     // the restored card is not on this board
+
+        model.undoDelete()
+
+        #expect(model.filter == ClipboardSearchFilter())
+        #expect(model.selectedID == loose.id)
+    }
+}

@@ -1,13 +1,20 @@
 import AppKit
 import SwiftUI
 
-struct ClipboardPanelView: View {
-    @ObservedObject var store: ClipboardStore
-    let pasteboard: ClipPasteboard
-    @ObservedObject var model: PanelViewModel
+/// What the panel content can ask its window to do. Each is one operation owned by
+/// `ClipboardPanelController`, shared with its keyboard path.
+struct PanelActions {
+    let paste: (ClipboardItem) -> Void
+    let copy: (ClipboardItem) -> Void
+    let preview: (ClipboardItem) -> Void
     let close: () -> Void
     let reopen: () -> Void
-    let preview: (ClipboardItem) -> Void
+}
+
+struct ClipboardPanelView: View {
+    @ObservedObject var store: ClipboardStore
+    @ObservedObject var model: PanelViewModel
+    let actions: PanelActions
 
     @State private var hoveredID: ClipboardItem.ID?
     @State private var suppressHoverScroll = false
@@ -64,7 +71,6 @@ struct ClipboardPanelView: View {
             focus = .search
         }
         .onAppear {
-            model.selectFirst()
             focus = .search
         }
         .onChange(of: model.showToken) {
@@ -83,12 +89,6 @@ struct ClipboardPanelView: View {
                 commitRenameByID(id)
             }
         }
-        .onChange(of: model.query) {
-            model.selectFirst()
-        }
-        .onChange(of: model.filter) {
-            model.selectFirst()
-        }
     }
 
     private var panelOverlay: Color {
@@ -100,9 +100,7 @@ struct ClipboardPanelView: View {
     private var pasteToolbar: some View {
         HStack(alignment: .center, spacing: Self.toolbarSpacing) {
             Button {
-                model.filter = ClipboardSearchFilter()
-                model.query = ""
-                model.selectFirst()
+                model.resetFilters()
             } label: {
                 Image(systemName: "arrow.triangle.2.circlepath")
                     .font(.system(size: 16, weight: .medium))
@@ -202,7 +200,7 @@ struct ClipboardPanelView: View {
                                             item: item,
                                             onClick: {
                                                 model.selectedID = item.id
-                                                paste(item)
+                                                actions.paste(item)
                                             },
                                             onDragStart: {
                                                 model.selectedID = item.id
@@ -210,14 +208,14 @@ struct ClipboardPanelView: View {
                                             onSessionBegan: {
                                                 // Hide the panel once the drag is live so it
                                                 // never blocks a drop target at screen bottom.
-                                                close()
+                                                actions.close()
                                             },
                                             onDragEnd: { operation in
                                                 // Drop accepted by an app → the drag delivered
                                                 // the content. Not accepted → bring the panel
                                                 // back so the user can retry (no blind paste).
                                                 if operation.isEmpty {
-                                                    reopen()
+                                                    actions.reopen()
                                                 }
                                             },
                                             makeDragImage: {
@@ -324,15 +322,14 @@ struct ClipboardPanelView: View {
         // Clicking the card / Return pastes; the menu offers copy + organize. Text clips are stored as
         // plain text only, so there is no separate "paste as plain text".
         Button {
-            pasteboard.copy(item)
-            close()
+            actions.copy(item)
         } label: {
             Label("Copy", systemImage: "doc.on.doc")
         }
 
         // Open a full-size, content-adaptive preview window (panel stays open for comparison).
         Button {
-            preview(item)
+            actions.preview(item)
         } label: {
             Label("Preview", systemImage: "eye.square")
         }
@@ -370,15 +367,10 @@ struct ClipboardPanelView: View {
 
         // Group 3 — destructive.
         Button(role: .destructive) {
-            store.delete(item)
+            model.delete(item)
         } label: {
             Label("Delete", systemImage: "trash")
         }
-    }
-
-    private func paste(_ item: ClipboardItem) {
-        close()
-        pasteboard.paste(item)
     }
 
     // MARK: - Inline title rename

@@ -7,11 +7,12 @@ import SwiftUI
 /// what lets the app-level NSEvent monitor read/mutate selection without focus-timing hacks.
 @MainActor
 final class PanelViewModel: ObservableObject {
+    /// A new query or filter always re-selects the top result, so Return pastes what is shown first.
     @Published var query = "" {
-        didSet { if query != oldValue { refilter() } }
+        didSet { if query != oldValue { refilter(); selectFirst() } }
     }
     @Published var filter = ClipboardSearchFilter() {
-        didSet { if filter != oldValue { refilter() } }
+        didSet { if filter != oldValue { refilter(); selectFirst() } }
     }
     @Published var selectedID: ClipboardItem.ID? {
         didSet {
@@ -92,5 +93,32 @@ final class PanelViewModel: ObservableObject {
         let current = selectedID.flatMap { id in items.firstIndex { $0.id == id } } ?? 0
         let next = min(max(current + offset, 0), items.count - 1)
         selectedID = items[next].id
+    }
+
+    /// Back to the full, unfiltered history.
+    func resetFilters() {
+        query = ""
+        filter = ClipboardSearchFilter()
+    }
+
+    /// Delete a card and select the neighbor now at the same position, so repeated deletes keep the
+    /// user's place. Deleting can make SwiftUI drop the search field's focus, so it is re-claimed.
+    func delete(_ item: ClipboardItem) {
+        let index = filteredItems.firstIndex { $0.id == item.id } ?? 0
+        store.delete(item)
+        let remaining = filteredItems
+        selectedID = remaining.isEmpty ? nil : remaining[min(index, remaining.count - 1)].id
+        requestSearchFocus()
+    }
+
+    /// Restore the most recently deleted card (⌘Z) and select it so the recovery is visible. If the
+    /// active filter hides the restored card, fall back to the full history — otherwise the selection
+    /// would point off-screen and the next paste would act on a different card.
+    func undoDelete() {
+        guard let restored = store.undoDelete() else { return }
+        if !filteredItems.contains(where: { $0.id == restored.id }) {
+            resetFilters()
+        }
+        selectedID = restored.id
     }
 }

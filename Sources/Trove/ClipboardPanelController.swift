@@ -11,8 +11,8 @@ final class ClipboardPanelController {
     // App-lifetime observer (the controller is held by AppDelegate for the whole run), so it never
     // needs explicit removal; the [weak self] closure keeps it from retaining the controller.
     private var appActivationObserver: NSObjectProtocol?
-    // Global mouse monitor (app-lifetime; the [weak self] closure keeps it from retaining the
-    // controller) — the click-outside escape hatch for when the panel never became key.
+    // Global mouse monitor, installed only while the panel is up — the click-away escape hatch for
+    // when the panel never became key.
     private var clickAwayMonitor: Any?
     // Local keyDown monitor (app-lifetime) — the window-level key router, so navigation/action keys
     // (and dismissal) never depend on the search field still holding SwiftUI focus.
@@ -20,8 +20,8 @@ final class ClipboardPanelController {
     private let model: PanelViewModel
     private lazy var previewController = PreviewWindowController(files: store.files)
     private lazy var quickLook = QuickLookBubbleController(files: store.files)
-    /// True while the animated drawer-collapse hide is in flight, so a second dismissal can't re-enter
-    /// it and capture the half-collapsed frame as its startFrame.
+    /// True while the animated fade-out is in flight, so a second dismissal can't re-arm its
+    /// completion and order out a panel the user just re-summoned.
     private var isHiding = false
     private var visibilityGeneration = 0
 
@@ -75,6 +75,7 @@ final class ClipboardPanelController {
         // click-away monitor or the hotkey — pasting itself never depended on the panel being key.
         panel.orderFrontRegardless()
         panel.makeKey()
+        installClickAwayMonitor()
         // Fade the STATIONARY window in on Tern's out curve (alpha on a stationary behind-window blur
         // is cached and cheap; moving it is not). The content pops in on top — ClipboardPanelView.popIn.
         NSAnimationContext.runAnimationGroup { context in
@@ -94,6 +95,7 @@ final class ClipboardPanelController {
         // Any panel dismissal (paste, Esc, hotkey, focus loss, drag) also dismisses the peek bubble
         // — a single chokepoint so the bubble can never outlive the panel.
         quickLook.hide()
+        removeClickAwayMonitor()
         guard let panel, panel.isVisible, animated else {
             visibilityGeneration += 1
             isHiding = false
@@ -140,11 +142,14 @@ final class ClipboardPanelController {
     private func makeContent() -> ClipboardPanelView {
         ClipboardPanelView(
             store: store,
-            pasteboard: pasteboard,
             model: model,
-            close: { [weak self] in self?.hide() },
-            reopen: { [weak self] in self?.show() },
-            preview: { [weak self] item in self?.showPreview(item) }
+            actions: PanelActions(
+                paste: { [weak self] item in self?.paste(item) },
+                copy: { [weak self] item in self?.copy(item) },
+                preview: { [weak self] item in self?.showPreview(item) },
+                close: { [weak self] in self?.hide() },
+                reopen: { [weak self] in self?.show() }
+            )
         )
     }
 
@@ -211,18 +216,6 @@ final class ClipboardPanelController {
             }
         }
 
-        // Mouse-down escape hatch for the one case the activation observer misses: clicking back into the
-        // app that is ALREADY active (no re-activation, so no didActivate) or the desktop. Mouse events
-        // aren't suppressed by secure event input, so this also dismisses the panel when it was summoned
-        // over a password field and never became key. Clicks inside Trove's own windows are local events
-        // and don't reach this global monitor, so clicking a card still selects/pastes.
-        clickAwayMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, self.isVisible else { return }
-                self.hide(animated: true)
-            }
-        }
-
         // Route all panel keys here. Churning the timeline (e.g. deleting several cards) can silently
         // drop the search field's SwiftUI focus; catching keyDown at the window level keeps navigation,
         // actions, and dismissal routed through the same pure `handleKey` model regardless of focus.
@@ -237,6 +230,27 @@ final class ClipboardPanelController {
             }
             return handled ? nil : event
         }
+    }
+
+    /// Mouse-down escape hatch for the one case the activation observer misses: clicking back into the
+    /// app that is ALREADY active (no re-activation, so no didActivate) or the desktop. Mouse events
+    /// aren't suppressed by secure event input, so this also dismisses the panel when it was summoned
+    /// over a password field and never became key. Clicks inside Trove's own windows are local events
+    /// and don't reach this global monitor, so clicking a card still selects/pastes.
+    private func installClickAwayMonitor() {
+        guard clickAwayMonitor == nil else { return }
+        clickAwayMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.isVisible else { return }
+                self.hide(animated: true)
+            }
+        }
+    }
+
+    private func removeClickAwayMonitor() {
+        guard let clickAwayMonitor else { return }
+        NSEvent.removeMonitor(clickAwayMonitor)
+        self.clickAwayMonitor = nil
     }
 
     /// Window-level keyboard router. Intercepts navigation/action keys (←/→, ⌘←/⌘→, ⌦, ⌘⌫, Return,
@@ -320,29 +334,16 @@ final class ClipboardPanelController {
             hide(animated: true)
         case .clearQuery:
             model.query = ""
-            model.selectFirst()
         case .paste:
-            performPaste()
+            if let item = model.selectedItem { paste(item) }
         case .moveSelection(let delta):
             model.moveSelection(by: delta)
         case .pageSelection(let direction):
             model.moveSelection(by: direction * visibleCardCount())
         case .deleteSelectedCard:
-            deleteSelectedCard()
+            if let item = model.selectedItem { model.delete(item) }
         case .undoDelete:
-            // Restore the most recently deleted card and re-select it so the recovery is visible.
-            if let restored = store.undoDelete() {
-                // If an active filter (a pinboard/kind scope) hides the recovered card, reset to the
-                // full unfiltered history so undo always surfaces what it restored — otherwise
-                // `selectedID` would point at an off-screen row and `selectedItem` would silently fall
-                // back to a DIFFERENT visible card for the next paste. (⌘Z already requires an empty
-                // search query, so the text filter can't be the culprit; the scope filter still can.)
-                if !model.filteredItems.contains(where: { $0.id == restored.id }) {
-                    model.query = ""
-                    model.filter = ClipboardSearchFilter()
-                }
-                model.selectedID = restored.id
-            }
+            model.undoDelete()
         case .toggleQuickLook:
             // The bubble's expand button hands off to the full standalone preview window.
             quickLook.onExpand = { [weak self] item in self?.showPreview(item) }
@@ -360,24 +361,15 @@ final class ClipboardPanelController {
         return false
     }
 
-    private func performPaste() {
-        guard let item = model.selectedItem else { return }
+    /// Hide first (instantly), then paste into the remembered target.
+    private func paste(_ item: ClipboardItem) {
         hide()
         pasteboard.paste(item)
     }
 
-    /// Delete the selected card (⌦ or ⌘⌫) and re-select a sensible neighbor at the same position so
-    /// the user can keep deleting without losing their place. The panel stays open; an open peek
-    /// re-fits (or hides if the list emptied) via the selection-change hook.
-    private func deleteSelectedCard() {
-        guard let item = model.selectedItem else { return }
-        let index = model.filteredItems.firstIndex { $0.id == item.id } ?? 0
-        store.delete(item)
-        let remaining = model.filteredItems
-        model.selectedID = remaining.isEmpty ? nil : remaining[min(index, remaining.count - 1)].id
-        // Deleting can make SwiftUI drop the search field's focus; re-claim it so printable input
-        // keeps editing the query. Navigation/action keys remain available through the window monitor.
-        model.requestSearchFocus()
+    private func copy(_ item: ClipboardItem) {
+        pasteboard.copy(item)
+        hide()
     }
 
     /// Roughly how many cards are visible across the panel — the page size for ⌘←/⌘→. Derived from
