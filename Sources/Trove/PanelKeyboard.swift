@@ -18,7 +18,7 @@ enum PanelKeyIntent: Equatable {
 
     case moveSelection(Int)    // ←/→ : move the card selection
     case pageSelection(Int)    // ⌘←/⌘→ : direction (-1/+1); executor scales by the page size
-    case paste(plainText: Bool)
+    case paste                 // Return / keypad Enter : paste the selected card
     case deleteSelectedCard    // ⌦ or ⌘⌫
     case undoDelete            // ⌘Z : restore the most recently deleted card
     case toggleQuickLook       // Space over a selected card with an empty search
@@ -51,10 +51,9 @@ enum PanelKeyboard {
         }
 
         // Return / numeric-keypad Enter (the keypad/Enter key arrives as the ETX character) pastes
-        // the selection. ⌥Return pastes plain.
+        // the selection.
         if key == .return || key == KeyEquivalent("\u{0003}") {
-            if mods == .option { return .paste(plainText: true) }
-            return mods.isEmpty ? .paste(plainText: false) : .passThrough
+            return mods.isEmpty ? .paste : .passThrough
         }
 
         // ⌘←/⌘→ page the selection; ⌘⌫ deletes the card; ⌘Z restores the last delete. ⇧⌘Z (redo) has

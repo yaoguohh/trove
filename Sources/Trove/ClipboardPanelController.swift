@@ -321,8 +321,8 @@ final class ClipboardPanelController {
         case .clearQuery:
             model.query = ""
             model.selectFirst()
-        case .paste(let plainText):
-            performPaste(asPlainText: plainText)
+        case .paste:
+            performPaste()
         case .moveSelection(let delta):
             model.moveSelection(by: delta)
         case .pageSelection(let direction):
@@ -360,10 +360,10 @@ final class ClipboardPanelController {
         return false
     }
 
-    private func performPaste(asPlainText: Bool) {
+    private func performPaste() {
         guard let item = model.selectedItem else { return }
         hide()
-        monitor.copyAndPaste(item, asPlainText: asPlainText)
+        monitor.copyAndPaste(item)
     }
 
     /// Delete the selected card (⌦ or ⌘⌫) and re-select a sensible neighbor at the same position so

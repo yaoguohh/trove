@@ -40,7 +40,6 @@ Summon with `⇧⌘V`, then it's all keyboard:
 | `←` / `→` | Move the card selection |
 | `⌘←` / `⌘→` | Jump a screenful at a time |
 | `Return` | Paste the selected clip |
-| `⌥Return` | Paste as plain text |
 | `Space` | Quick-look peek bubble for the selected card |
 | `⌦` / `⌘⌫` | Delete the selected clip |
 | `Esc` | Dismiss the peek → clear the search → close the panel |

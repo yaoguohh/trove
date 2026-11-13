@@ -38,14 +38,14 @@ struct PanelKeyboardEscapeTests {
 
 struct PanelKeyboardReturnTests {
     @Test func returnPastes() {
-        #expect(decide(.return) == .paste(plainText: false))
+        #expect(decide(.return) == .paste)
     }
     @Test func keypadEnterAlsoPastes() {
         // The numeric-keypad Enter key arrives as the ETX character, not .return.
-        #expect(decide(KeyEquivalent("\u{0003}")) == .paste(plainText: false))
+        #expect(decide(KeyEquivalent("\u{0003}")) == .paste)
     }
-    @Test func optionReturnPastesPlain() {
-        #expect(decide(.return, [.option]) == .paste(plainText: true))
+    @Test func optionReturnPassesThrough() {
+        #expect(decide(.return, [.option]) == .passThrough)
     }
     @Test func returnWithUnhandledModifierPassesThrough() {
         #expect(decide(.return, [.command]) == .passThrough)

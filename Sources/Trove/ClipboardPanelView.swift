@@ -318,8 +318,8 @@ struct ClipboardPanelView: View {
 
     @ViewBuilder
     private func clipMenu(for item: ClipboardItem) -> some View {
-        // Clicking the card / Return pastes. Items are stored as plain text only, so a
-        // "plain text" variant would be identical — the menu just offers copy + organize.
+        // Clicking the card / Return pastes; the menu offers copy + organize. Text clips are stored as
+        // plain text only, so there is no separate "paste as plain text".
         Button {
             monitor.copy(item)
             close()

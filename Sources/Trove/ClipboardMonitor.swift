@@ -37,9 +37,9 @@ final class ClipboardMonitor {
         self.timer = timer
     }
 
-    func copy(_ item: ClipboardItem, asPlainText: Bool = false) {
+    func copy(_ item: ClipboardItem) {
         pasteboard.clearContents()
-        if !asPlainText, item.kind == .image, let url = item.imageFileURL, let png = try? Data(contentsOf: url) {
+        if item.kind == .image, let url = item.imageFileURL, let png = try? Data(contentsOf: url) {
             // The stored PNG bytes go back verbatim: no decode, no TIFF→PNG round trip. The owner
             // supplies a TIFF only if a consumer asks for one. poll() recognises the echo by comparing
             // these exact bytes.
@@ -58,11 +58,11 @@ final class ClipboardMonitor {
         }
     }
 
-    func copyAndPaste(_ item: ClipboardItem, asPlainText: Bool = false) {
+    func copyAndPaste(_ item: ClipboardItem) {
         let targetSnapshot = pasteTargetSnapshot
-        copy(item, asPlainText: asPlainText)
+        copy(item)
         // Record the paste as a "use" (the single hook for every paste-from-panel action — keyboard
-        // Return/⌥Return and the view's click/menu paste both land here). poll() echo-suppresses this
+        // Return and the view's click/menu paste both land here). poll() echo-suppresses this
         // write, so a use never re-enters add(); recordUse only stamps lastUsedAt for the summon bias.
         store.recordUse(item)
 

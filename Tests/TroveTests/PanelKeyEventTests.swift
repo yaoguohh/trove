@@ -64,16 +64,16 @@ struct PanelKeyEventTests {
     }
 
     @Test func returnPastes() {
-        #expect(intent(KeyCode.returnKey) == .paste(plainText: false))
+        #expect(intent(KeyCode.returnKey) == .paste)
     }
 
-    @Test func optionReturnPastesPlain() {
-        #expect(intent(KeyCode.returnKey, mods: .option) == .paste(plainText: true))
+    @Test func optionReturnPassesThrough() {
+        #expect(intent(KeyCode.returnKey, mods: .option) == .passThrough)
     }
 
     @Test func keypadEnterPastes() {
         // The numeric-keypad Enter arrives as ETX ("\u{0003}"); intent treats it like Return.
-        #expect(intent(KeyCode.keypadEnter) == .paste(plainText: false))
+        #expect(intent(KeyCode.keypadEnter) == .paste)
     }
 
     @Test func spaceTogglesQuickLookWithSelection() {
