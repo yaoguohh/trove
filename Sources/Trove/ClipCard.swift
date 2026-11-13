@@ -274,7 +274,7 @@ private struct ClipCardFooter: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            // Relative time lives at the bottom-left now (moved out of the header).
+            // Relative copy time at the bottom-left.
             Text(createdAt, style: .relative)
                 .font(.system(size: metrics.footerSize, weight: .medium))
                 .foregroundStyle(Theme.Text.t3)

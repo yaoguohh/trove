@@ -173,8 +173,8 @@ final class PasteExecutor {
         // activate to deliver a Cmd+V — the password-field path, where AX text insertion is blocked by
         // the secure field. Use the Carbon Process Manager's front-window-only activation, which makes
         // the app key for keyboard input but raises ONLY its frontmost window — the documented community
-        // workaround for this exact bug. (Also drop the app-level kAXFrontmostAttribute set, which had
-        // the same raise-everything side effect.) Falls back to NSRunningApplication if unavailable.
+        // workaround for this exact bug. (Setting the app-level kAXFrontmostAttribute has the same
+        // raise-everything side effect, so it isn't used.) Falls back to NSRunningApplication if unavailable.
         if !activateFrontWindowOnly(pid: target.processIdentifier) {
             target.application.activate(options: [])
         }
@@ -290,9 +290,8 @@ final class PasteExecutor {
         // command+0x8 compatibility flag, posted to the session event tap (the current session's focus).
         //
         // Crucially we do NOT suppress the user's real keyboard around the synthesized ⌘V. The events
-        // below carry explicit, clean flags, so the held-modifier pollution the suppression used to guard
-        // against is already handled — whereas the default ~0.25s suppression interval (with a mask that
-        // omitted keyboard) would DROP a real Cmd+C the user happens to press just after pasting from
+        // below carry explicit, clean flags, so held modifiers can't pollute them — whereas the default
+        // ~0.25s suppression interval would DROP a real ⌘C the user presses just after pasting from
         // Trove, silently losing their copy. So permit local keyboard events AND zero the interval.
         let source = CGEventSource(stateID: .combinedSessionState)
         source?.setLocalEventsFilterDuringSuppressionState(

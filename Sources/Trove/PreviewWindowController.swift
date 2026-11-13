@@ -68,9 +68,9 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.isRestorable = false
         // Default: a normal-level, MANAGED window so it shows in Mission Control and the window
-        // cycle like any app window. (.floating + the previous behavior set had no Exposé-axis
-        // value, so AppKit defaulted it to .transient — hidden from Mission Control.) The pin
-        // button in the titlebar (a trailing accessory) flips it to .floating + .fullScreenAuxiliary.
+        // cycle like any app window. (Without an explicit Exposé-axis value AppKit treats a .floating
+        // window as .transient — hidden from Mission Control.) The pin button in the titlebar (a
+        // trailing accessory) flips it to .floating + .fullScreenAuxiliary.
         window.level = .normal
         window.collectionBehavior = [.managed, .participatesInCycle]
         window.minSize = NSSize(width: 320, height: 240)

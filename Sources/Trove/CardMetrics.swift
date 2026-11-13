@@ -27,9 +27,8 @@ struct CardMetrics {
         topPadding = min(13, max(9, containerSize.height * 0.035))
         bottomPadding = min(24, max(16, containerSize.height * 0.075))
         let usableHeight = max(158, containerSize.height - topPadding - bottomPadding - 8)
-        // Larger cards: taller cap (212 → 264) and a wider aspect (was ≈square at 0.98; now
-        // 1.12) so each card shows more content. Panel height (ClipboardPanelController) was
-        // raised in step so the card can actually reach these caps on a big display.
+        // Height capped at 264 with a 1.12 aspect so each card shows a useful amount of content; the
+        // panel height (ClipboardPanelController.position) leaves room to reach the cap on a big display.
         height = min(264, max(176, usableHeight))
         width = min(330, max(220, height * 1.12))
         headerHeight = min(48, max(38, height * 0.16))

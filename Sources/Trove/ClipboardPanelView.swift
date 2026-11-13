@@ -40,9 +40,8 @@ struct ClipboardPanelView: View {
             timeline
                 .zIndex(2)
         }
-        // Tern's popIn on the CONTENT only (Motion.scale + a 4pt rise): the glass behind it is an AppKit
-        // behind-window blur that must never be transformed per frame, so the window just fades in
-        // (ClipboardPanelController.show) while the content arrives on top of it.
+        // Tern's popIn on the CONTENT only (Motion.scale + a 4pt rise); the glass window behind it only
+        // fades (`NSWindow.fadeIn`).
         .popIn(trigger: model.showToken, nudge: 4)
         .frame(minWidth: ClipboardPanelController.minimumSize.width, minHeight: ClipboardPanelController.minimumSize.height)
         .background {
@@ -120,7 +119,7 @@ struct ClipboardPanelView: View {
                 }
             )
             // Uniform 36pt height across all toolbar items so they share one vertical center and
-            // an equal top margin (the search field was taller than the icon buttons before).
+            // an equal top margin.
             .frame(height: Self.toolbarItemHeight)
 
             PinboardStrip(store: store, model: model, spacing: Self.toolbarSpacing, itemHeight: Self.toolbarItemHeight)
@@ -249,7 +248,7 @@ struct ClipboardPanelView: View {
                                             // Only let hover steal the keyboard selection on a REAL
                                             // pointer move — NOT when a card scrolls/lays out under a
                                             // stationary pointer (that fires hover at the same global
-                                            // location), which used to snap the selection backwards.
+                                            // location), which would snap the selection backwards.
                                             let moved = lastHoverLocation.map {
                                                 hypot(location.x - $0.x, location.y - $0.y) > 0.5
                                             } ?? true

@@ -4,7 +4,7 @@ import SwiftUI
 /// Bridges a raw AppKit `keyDown` into the SwiftUI key + modifiers that the pure `PanelKeyboard.intent`
 /// consumes. The panel routes EVERY key through a window-level monitor (not the search field's
 /// `onKeyPress`), so navigation/action keys work no matter which subview holds focus — deleting a card
-/// can drop the field's focus, which used to silence the only key handler. Decoding from extracted
+/// can drop the field's focus, which would silence a handler attached to the field. Decoding from extracted
 /// primitives (keyCode / modifier bits / characters) rather than a live `NSEvent` keeps it pure and
 /// makes the whole keyDown→intent path unit-testable.
 enum PanelKeyEvent {

@@ -86,8 +86,8 @@ final class ClipboardMonitor {
     }
 
     /// Normalise, thumbnail and write the bitmap OFF the main thread, then hand the finished files to
-    /// the store. A 4K screenshot used to cost ~0.9s of main-thread TIFF→PNG encoding per copy; PNG
-    /// now passes through untouched and the only work is the thumbnail, on a background task.
+    /// the store. Encoding a 4K TIFF screenshot to PNG takes ~0.9s, so none of it may run on the main
+    /// thread; a PNG passes through untouched and only its thumbnail is generated.
     private func ingest(_ payload: PasteboardImagePayload, source: SourceApplication) {
         guard payload.data.count <= ImageIngest.maxImageBytes else {
             Log.images.notice("skipped a \(payload.data.count) byte pasteboard image (over the \(ImageIngest.maxImageBytes) byte cap)")

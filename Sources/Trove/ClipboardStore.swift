@@ -150,8 +150,7 @@ final class ClipboardStore: ObservableObject {
             // a sidecar, that sidecar exists on disk — so `ClipFiles.fullText` (paste/copy/drag) never
             // races a pending write, and a crash leaves at most an orphan .txt (swept by
             // the launch-time orphan sweep), never a dangling reference. The cost is a one-time O(n)
-            // write proportional to clip size, on a deliberate copy of unusual (>20k-char) content —
-            // acceptable, and unlike the old per-render hang it does not repeat.
+            // write proportional to clip size, on a deliberate copy of unusual (>20k-char) content.
             item.textFileName = try files.writeText(storedText, for: item.id)
             item.text = String(storedText.prefix(ClipboardItem.inlineTextCap))
         } catch {

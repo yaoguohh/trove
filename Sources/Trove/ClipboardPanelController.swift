@@ -62,9 +62,9 @@ final class ClipboardPanelController {
         // The panel is a `.nonactivatingPanel`, so it becomes the KEY window and receives keyboard
         // WITHOUT activating Trove or stealing the frontmost app's active status — the idiomatic
         // launcher pattern (the same one our QuickLook bubble uses). We deliberately do NOT call
-        // `NSApp.activate`: on macOS 14+ the old `ignoringOtherApps: true` is ignored and activation is
-        // only a cooperative request, and NOT stealing activation means the previous app (the paste
-        // target) stays frontmost, so dismissing the panel returns the user there cleanly. A key
+        // `NSApp.activate`: on macOS 14+ activation is only a cooperative request, and NOT stealing
+        // activation means the app the user was in (the paste target) stays frontmost, so dismissing
+        // the panel returns the user there cleanly. A key
         // nonactivating panel routes typing into the search field on its own. `orderFrontRegardless`
         // shows it even though our accessory app is inactive; `makeKey` makes it the keyboard target.
         //
@@ -111,9 +111,8 @@ final class ClipboardPanelController {
 
         // A plain opacity fade — NOT a window-frame slide. Moving a panel backed by a `.behindWindow`
         // NSVisualEffectView forces the window server to recompute the desktop blur for the new
-        // position on EVERY frame (and the old `display: true` forced a synchronous redraw too), which
-        // is exactly what made the dismissal stutter. With the window stationary the backdrop blur is
-        // cached and only the alpha animates, so the fade holds 60fps.
+        // position on EVERY frame, which makes the dismissal stutter. With the window stationary the
+        // backdrop blur is cached and only the alpha animates, so the fade holds 60fps.
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = Theme.Motion.seconds(Theme.Motion.Duration.fade)
             context.timingFunction = Theme.Motion.easeTiming
@@ -185,9 +184,8 @@ final class ClipboardPanelController {
         self.panel = panel
 
         // Spotlight-style auto-dismiss. The panel is a `.nonactivatingPanel`, so summoning it does NOT
-        // make Trove the active app — which means the old `didResignActive` observer would never fire
-        // (Trove was never active) and the panel would linger when the user Cmd-Tabs / Spotlights / opens
-        // another app. Instead, watch for ANOTHER app becoming active: didActivateApplication covers
+        // make Trove the active app — so a `didResignActive` observer would never fire (Trove was never
+        // active) and the panel would linger when the user Cmd-Tabs / Spotlights / opens another app. Instead, watch for ANOTHER app becoming active: didActivateApplication covers
         // Cmd-Tab, Spotlight, app launches, and clicking another app. We IGNORE activations of Trove
         // itself, so opening our own preview window (which calls NSApp.activate) keeps the panel open
         // beneath it for side-by-side comparison. `hidesOnDeactivate` stays false on purpose so this

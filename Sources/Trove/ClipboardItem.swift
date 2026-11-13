@@ -80,8 +80,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
     /// Upper bound on the number of characters `preview` derives from the full text. A card only
     /// shows a handful of lines, so capping the SOURCE keeps `preview` (and everything downstream of
     /// it — card body, `displayTitle`, the drag image, the preview-window title) O(cap) instead of
-    /// O(full text). The render hot path used to build a full newline-replaced copy of a multi-MB
-    /// clip on every re-render.
+    /// O(full text); without it every re-render would build a newline-replaced copy of a multi-MB clip.
     static let displayPreviewCap = 8_000
 
     var preview: String {

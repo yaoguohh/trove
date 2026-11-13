@@ -63,8 +63,7 @@ struct StatusMenuView: View {
             footer
         }
         .frame(width: width)
-        // Tern's `popIn` for the content; the window itself fades in (AppDelegate) so the behind-window
-        // blur is never transformed per frame.
+        // Tern's `popIn` for the content; the window only fades (`NSWindow.fadeIn`).
         .popIn()
         // The same dense .hudWindow glass as the clipboard panel, so the menu reads as a solid surface.
         .background(GlassBackground())

@@ -8,7 +8,7 @@ struct LinkMetadata: Codable, Equatable {
     var port: Int? = nil
     var iconFileName: String?
     /// When this record was produced. Lets a failed lookup (no title, no icon) expire and be retried
-    /// instead of being cached forever — a link copied while offline used to never get its title.
+    /// instead of being cached forever, so a link copied while offline still gets its title later.
     /// Optional so records cached by older releases still decode (they count as expired once).
     var fetchedAt: Date? = nil
 
@@ -29,8 +29,7 @@ final class LinkMetadataProvider {
     private nonisolated static let requestTimeout: TimeInterval = 7
     /// How long a lookup that produced nothing (no title, no icon) is believed before retrying.
     nonisolated static let negativeCacheTTL: TimeInterval = 24 * 60 * 60
-    /// Cap on simultaneous page fetches. A strip of uncached link cards used to open one URLSession
-    /// each, all at once.
+    /// Cap on simultaneous page fetches, so a strip of uncached link cards doesn't fetch all at once.
     nonisolated static let maxConcurrentFetches = 4
 
     /// Whether link cards may reach out to the network to fetch title/favicon. Off until the user
@@ -519,9 +518,8 @@ final class LinkMetadataProvider {
         firstMatch(in: tag, pattern: #"\#(name)\s*=\s*["']([^"']+)["']"#)
     }
 
-    /// Pure HTML entity decoder. Replaces the previous NSAttributedString(.html)
-    /// path, which is WebKit-backed and must run on the main thread — this ran on
-    /// a background executor (the enclosing fetch is `nonisolated async`).
+    /// Pure HTML entity decoder. NSAttributedString(.html) can't be used here: it is WebKit-backed and
+    /// main-thread-only, and this runs on a background executor (the enclosing fetch is `nonisolated async`).
     nonisolated static func decodeHTMLEntities(_ value: String) -> String {
         guard value.contains("&") else { return value }
         var result = ""
