@@ -2,7 +2,8 @@
 
 Trove ships on the **free distribution path**: ad-hoc signed, **not** notarized (no paid Apple
 Developer account), with in-app auto-updates via **Sparkle** (EdDSA-signed appcast, independent of
-Apple notarization). Distribution is **GitHub Releases** (Homebrew Cask optional, later).
+Apple notarization). Distribution is **GitHub Releases** (Homebrew Cask optional, later). The app is
+a universal binary (Apple Silicon and Intel) for macOS 14 and later.
 
 > Background & rationale: two deep-research passes confirmed this is the standard setup for native
 > open-source macOS tools (Maccy, Ice, Rectangle, Stats). Friction is one-time: users approve the
