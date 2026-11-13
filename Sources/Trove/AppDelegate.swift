@@ -1,51 +1,52 @@
 import AppKit
-import SwiftUI
+import Combine
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let store = ClipboardStore()
-    private let shortcutStore = ShortcutStore()
+    private let settings = AppSettings.shared
+    private lazy var store = ClipboardStore(maxItems: settings.maxItems)
     private var monitor: ClipboardMonitor?
     private var hotKeyManager: HotKeyManager?
     private var statusItem: NSStatusItem?
-    /// The status menu is a hand-positioned borderless panel (no NSPopover arrow — a clean drop-down
-    /// straight under the icon, like Control Center / a `MenuBarExtra(.window)`).
-    private var statusMenuPanel: NSPanel?
-    /// Live only while the status menu is open: a global mouse monitor (dismiss on any outside click,
-    /// incl. other menu-bar icons) and a resign-active observer (dismiss on Cmd-Tab / focus loss).
-    private var statusMenuMonitor: Any?
-    private var statusMenuResignObserver: NSObjectProtocol?
-    /// When the menu last closed — so the same click that dismissed it (via the monitor) doesn't get
-    /// re-opened by the status-item action firing immediately after.
-    private var statusMenuLastClosed: Date?
+    private var statusMenu: StatusMenuController?
     private var panelController: ClipboardPanelController?
     private var updaterController: UpdaterController?
-    private let runInBackgroundKey = "Trove.runInBackground"
+    private var settingsObservers: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Dark-only by design: the panel is a Dock/HUD-class floating surface, and every color in the
         // app is a single anthracite token (see Theme). Pinning the appearance app-wide keeps the
         // inspect window, menus and alerts on the same side.
         NSApp.appearance = NSAppearance(named: .darkAqua)
-        applyActivationPolicy()
         let clipboardMonitor = ClipboardMonitor(store: store)
         monitor = clipboardMonitor
         clipboardMonitor.start()
+        Log.clipboard.notice("clipboard access behavior: \(ClipboardAccessPermission.logDescription, privacy: .public)")
 
-        panelController = ClipboardPanelController(
-            store: store,
-            monitor: clipboardMonitor
-        )
-        hotKeyManager = HotKeyManager { [weak self] in
+        panelController = ClipboardPanelController(store: store, monitor: clipboardMonitor)
+        let hotKeys = HotKeyManager { [weak self] in
             self?.togglePanel()
         }
-        hotKeyManager?.register(shortcut: shortcutStore.shortcut)
-        shortcutStore.onChange = { [weak self] shortcut in
-            self?.hotKeyManager?.register(shortcut: shortcut)
-        }
+        hotKeyManager = hotKeys
         // Sparkle auto-updates: starts scheduled background checks (release builds only — the
         // updater runtime lives in the packaged .app's embedded Sparkle.framework).
-        updaterController = UpdaterController()
+        let updater = UpdaterController()
+        updaterController = updater
+        statusMenu = StatusMenuController(
+            store: store,
+            settings: settings,
+            updater: updater,
+            hotKeys: hotKeys,
+            showPanel: { [weak self] in self?.showPanel() }
+        )
+
+        // `@Published` emits the current value on subscribe, so these also apply the launch state.
+        settings.$shortcut
+            .sink { [weak hotKeys] in hotKeys?.register(shortcut: $0) }
+            .store(in: &settingsObservers)
+        settings.$runInBackground
+            .sink { NSApp.setActivationPolicy($0 ? .accessory : .regular) }
+            .store(in: &settingsObservers)
 
         configureMenuBar()
 
@@ -75,164 +76,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.button?.target = self
         item.button?.action = #selector(statusItemClicked)
         // Left click toggles the panel; right/control click opens the status menu. Assigning
-        // `item.menu` directly would suppress the action entirely, so we present the menu (a designed
-        // SwiftUI popover) on demand instead.
+        // `item.menu` directly would suppress the action entirely, so the menu is presented on demand.
         item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         statusItem = item
-    }
-
-    private var runsInBackground: Bool {
-        // Default to background (menu-bar only, no Dock icon), like Maccy / Ice — but honor an
-        // explicit choice once the user has toggled it. `object(forKey:)` is nil until then.
-        UserDefaults.standard.object(forKey: runInBackgroundKey) as? Bool ?? true
-    }
-
-    private func applyActivationPolicy() {
-        NSApp.setActivationPolicy(runsInBackground ? .accessory : .regular)
     }
 
     private func togglePanel() {
         if panelController?.isVisible == true {
             panelController?.hide(animated: true)
         } else {
-            monitor?.rememberPasteTarget()
-            panelController?.show()
+            showPanel()
         }
     }
 
-    @objc private func statusItemClicked() {
-        if let event = NSApp.currentEvent,
-           event.type == .rightMouseUp || event.modifierFlags.contains(.control) {
-            showStatusMenu()
-        } else {
-            togglePanel()
-        }
-    }
-
-    private func showStatusMenu() {
-        guard let button = statusItem?.button, let iconWindow = button.window else { return }
-        if statusMenuPanel != nil {               // already open → the click toggles it closed
-            closeStatusMenu()
-            return
-        }
-        // The click that dismissed the menu also fires the status-item action; don't re-open on it.
-        if let closed = statusMenuLastClosed, Date().timeIntervalSince(closed) < 0.2 { return }
-
-        let view = StatusMenuView(
-            clipCount: store.matches(query: "").count,
-            version: AppInfo.version,
-            accessibilityTrusted: AccessibilityPermission.isTrusted,
-            shortcutStore: shortcutStore,
-            linkPreviewsOn: LinkMetadataProvider.isAutoFetchEnabled,
-            runInBackground: runsInBackground,
-            onShow: { [weak self] in self?.closeStatusMenu(); self?.showPanel() },
-            onToggleLinkPreviews: { [weak self] in self?.toggleLinkPreviews() },
-            onToggleBackground: { [weak self] in self?.toggleBackgroundMode() },
-            onClearHistory: { [weak self] in self?.closeStatusMenu(); self?.clearUnpinned() },
-            onCheckUpdates: { [weak self] in self?.closeStatusMenu(); self?.checkForUpdates(nil) },
-            onClose: { [weak self] in self?.closeStatusMenu() },
-            onGrantAccessibility: { [weak self] in self?.closeStatusMenu(); self?.openAccessibilitySettings() },
-            onQuit: { [weak self] in self?.quit() }
-        )
-        let hosting = NSHostingController(rootView: view)
-        let size = hosting.view.fittingSize
-
-        let panel = StatusMenuPanel(
-            contentRect: NSRect(origin: .zero, size: size),
-            styleMask: [.borderless],
-            backing: .buffered,
-            defer: false
-        )
-        panel.contentViewController = hosting
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = true                    // follows the rounded glass content -> a rounded shadow
-        panel.level = .popUpMenu
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.isReleasedWhenClosed = false
-        panel.isRestorable = false
-        panel.hidesOnDeactivate = false           // we dismiss explicitly via the resign-active observer
-        panel.animationBehavior = .none           // we fade it in ourselves (below); dismissal is instant
-
-        // Drop straight down from the icon, centered on it, clamped fully on-screen.
-        let iconFrame = iconWindow.frame
-        var origin = NSPoint(x: iconFrame.midX - size.width / 2, y: iconFrame.minY - 4 - size.height)
-        if let vis = (iconWindow.screen ?? NSScreen.main)?.visibleFrame {
-            origin.x = min(max(origin.x, vis.minX + 8), vis.maxX - size.width - 8)
-        }
-        panel.setFrame(NSRect(origin: origin, size: size), display: false)
-        statusMenuPanel = panel
-
-        // Activate so the buttons are clickable and Esc (the view's onExitCommand) reaches a key window.
-        NSApp.activate(ignoringOtherApps: true)
-        // Tern's popIn: the window fades on the out curve while the content (StatusMenuView.popIn)
-        // scales from 0.97 and drops 3pt into place. Only alpha is animated at the window level so the
-        // behind-window blur is never recomputed per frame.
-        panel.alphaValue = 0
-        panel.makeKeyAndOrderFront(nil)
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = Theme.Motion.seconds(0.18)
-            context.timingFunction = Theme.Motion.outTiming
-            panel.animator().alphaValue = 1
-        }
-
-        statusMenuMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            self?.closeStatusMenu()
-        }
-        statusMenuResignObserver = NotificationCenter.default.addObserver(
-            forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.closeStatusMenu() }
-        }
-    }
-
-    private func closeStatusMenu() {
-        if let monitor = statusMenuMonitor {
-            NSEvent.removeMonitor(monitor)
-            statusMenuMonitor = nil
-        }
-        if let observer = statusMenuResignObserver {
-            NotificationCenter.default.removeObserver(observer)
-            statusMenuResignObserver = nil
-        }
-        statusMenuPanel?.orderOut(nil)
-        statusMenuPanel = nil
-        statusMenuLastClosed = Date()
-    }
-
-    @objc private func showPanel() {
+    private func showPanel() {
         monitor?.rememberPasteTarget()
         panelController?.show()
     }
 
-    @objc private func checkForUpdates(_ sender: Any?) {
-        updaterController?.checkForUpdates(sender)
+    @objc private func statusItemClicked() {
+        if let event = NSApp.currentEvent,
+           event.type == .rightMouseUp || event.modifierFlags.contains(.control),
+           let button = statusItem?.button {
+            statusMenu?.toggle(under: button)
+        } else {
+            togglePanel()
+        }
     }
-
-    @objc private func clearUnpinned() {
-        store.clearUnpinned()
-    }
-
-    @objc private func toggleLinkPreviews() {
-        LinkMetadataProvider.isAutoFetchEnabled.toggle()
-    }
-
-    @objc private func openAccessibilitySettings() {
-        AccessibilityPermission.openSettings()
-    }
-
-    @objc private func toggleBackgroundMode() {
-        UserDefaults.standard.set(!runsInBackground, forKey: runInBackgroundKey)
-        applyActivationPolicy()
-    }
-
-    @objc private func quit() {
-        NSApplication.shared.terminate(nil)
-    }
-}
-
-/// A borderless panel that can become key — so the status menu's Esc and its buttons work — used to
-/// present the status menu without NSPopover's arrow (a clean drop-down straight under the icon).
-private final class StatusMenuPanel: NSPanel {
-    override var canBecomeKey: Bool { true }
 }

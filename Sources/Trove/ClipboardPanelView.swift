@@ -151,9 +151,11 @@ struct ClipboardPanelView: View {
             Divider()
 
             Button {
-                store.clearUnpinned()
+                if ClearHistoryAlert.confirm() {
+                    store.clearUnpinned()
+                }
             } label: {
-                Label("Clear History", systemImage: "trash")
+                Label("Clear History...", systemImage: "trash")
             }
         } label: {
             Image(systemName: "ellipsis")

@@ -60,46 +60,6 @@ struct HotKeyShortcut: Codable, Equatable {
     }
 }
 
-@MainActor
-final class ShortcutStore: ObservableObject {
-    @Published private(set) var shortcut: HotKeyShortcut {
-        didSet {
-            save()
-            onChange?(shortcut)
-        }
-    }
-
-    var onChange: ((HotKeyShortcut) -> Void)?
-
-    private let defaultsKey = "Trove.showPanelShortcut"
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
-
-    init() {
-        if
-            let data = UserDefaults.standard.data(forKey: defaultsKey),
-            let decoded = try? decoder.decode(HotKeyShortcut.self, from: data)
-        {
-            shortcut = decoded
-        } else {
-            shortcut = .defaultShowPanel
-        }
-    }
-
-    func update(_ shortcut: HotKeyShortcut) {
-        self.shortcut = shortcut
-    }
-
-    func reset() {
-        shortcut = .defaultShowPanel
-    }
-
-    private func save() {
-        guard let data = try? encoder.encode(shortcut) else { return }
-        UserDefaults.standard.set(data, forKey: defaultsKey)
-    }
-}
-
 /// `@unchecked Sendable` invariant: the only mutable state (`hotKeyRefs`,
 /// `handlerRef`) is mutated exclusively from `register()`/`deinit`, both driven from
 /// the main thread by `AppDelegate`. The Carbon C event handler runs on the main
@@ -116,6 +76,9 @@ final class HotKeyManager: @unchecked Sendable {
     private var hotKeyRefs: [EventHotKeyRef] = []
     private var handlerRef: EventHandlerRef?
     private let action: () -> Void
+    /// False when the last registration failed — typically another app already owns the combination.
+    /// The status menu shows it next to the shortcut.
+    private(set) var isRegistered = false
 
     init(action: @escaping () -> Void) {
         self.action = action
@@ -152,10 +115,10 @@ final class HotKeyManager: @unchecked Sendable {
             }, 1, &eventType, selfPointer, &handlerRef)
         }
 
-        registerHotKey(id: HotKeyManager.showPanelHotKeyID, keyCode: shortcut.keyCode, modifiers: shortcut.carbonModifiers)
+        isRegistered = registerHotKey(id: HotKeyManager.showPanelHotKeyID, keyCode: shortcut.keyCode, modifiers: shortcut.carbonModifiers)
     }
 
-    private func registerHotKey(id: UInt32, keyCode: UInt32, modifiers: UInt32) {
+    private func registerHotKey(id: UInt32, keyCode: UInt32, modifiers: UInt32) -> Bool {
         let hotKeyID = EventHotKeyID(signature: FourCharCode("CLPD"), id: id)
         var ref: EventHotKeyRef?
         let status = RegisterEventHotKey(
@@ -166,11 +129,12 @@ final class HotKeyManager: @unchecked Sendable {
             0,
             &ref
         )
-        if status == noErr, let ref {
-            hotKeyRefs.append(ref)
-        } else {
+        guard status == noErr, let ref else {
             Log.hotkey.error("failed to register hotkey \(id): \(status)")
+            return false
         }
+        hotKeyRefs.append(ref)
+        return true
     }
 
     private func unregisterHotKeys() {

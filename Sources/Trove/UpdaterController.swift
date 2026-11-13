@@ -9,15 +9,14 @@ import Sparkle
 ///
 /// Note: the update runtime (Sparkle.framework's embedded Autoupdate.app / XPC services) only
 /// exists in the packaged `.app`. In a raw `swift run` dev build there's no SUFeedURL/SUPublicEDKey
-/// in the bundle, so `canCheckForUpdates` is false and "Check for Updates" reports it can't check —
-/// that's expected; updates are a release-build feature.
+/// in the bundle, so `canCheckForUpdates` is false and the status menu dims "Check for Updates".
 @MainActor
 final class UpdaterController {
     private let controller: SPUStandardUpdaterController
 
     init() {
-        // startingUpdater: true → begins scheduled background checks driven by Info.plist
-        // (SUEnableAutomaticChecks / SUScheduledCheckInterval). The standard flow needs no
+        // startingUpdater: true → begins scheduled background checks (Info.plist sets
+        // SUEnableAutomaticChecks; the interval is Sparkle's default). The standard flow needs no
         // delegates. Missing feed config is handled gracefully by Sparkle (logged, no crash).
         controller = SPUStandardUpdaterController(
             startingUpdater: true,
@@ -32,7 +31,7 @@ final class UpdaterController {
         controller.updater.canCheckForUpdates
     }
 
-    func checkForUpdates(_ sender: Any?) {
-        controller.checkForUpdates(sender)
+    func checkForUpdates() {
+        controller.checkForUpdates(nil)
     }
 }

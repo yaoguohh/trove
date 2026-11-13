@@ -61,7 +61,7 @@ struct LinkPreview: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     // Tern's working-state shimmer while the page title is still on its way; the
                     // fetched title then cross-fades in instead of snapping.
-                    .shimmer(!resolved && LinkMetadataProvider.isAutoFetchEnabled)
+                    .shimmer(!resolved && LinkMetadataProvider.isFetchingEnabled)
                     .contentTransition(.opacity)
                     .animation(Theme.Motion.ease(0.2), value: metadata)
             }

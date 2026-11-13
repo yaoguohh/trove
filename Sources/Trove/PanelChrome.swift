@@ -51,8 +51,7 @@ enum PanelChrome {
 
 /// A borderless panel that can still become key so the hosted SwiftUI search field receives text;
 /// navigation/action keys are intercepted by the controller's window-level event monitor.
-final class TrovePanel: NSPanel {
-    override var canBecomeKey: Bool { true }
+final class TrovePanel: KeyablePanel {
     override var canBecomeMain: Bool { true }
 
     // No main-menu Edit menu (menu-bar app), so route ⌘C/⌘X/⌘V/⌘A into the search field here. Only a

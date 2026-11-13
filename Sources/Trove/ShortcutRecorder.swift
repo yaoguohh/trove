@@ -22,7 +22,7 @@ struct KeyCapView: View {
 /// Records a global shortcut, showing key-cap badges and the live-held modifiers
 /// while recording (Escape cancels, an invalid combo beeps).
 struct ShortcutRecorder: View {
-    @ObservedObject var shortcutStore: ShortcutStore
+    @ObservedObject var settings: AppSettings
 
     @State private var isRecording = false
     @State private var liveModifiers: NSEvent.ModifierFlags = []
@@ -47,7 +47,7 @@ struct ShortcutRecorder: View {
                             }
                         }
                     } else {
-                        ForEach(Array(shortcutStore.shortcut.symbols.enumerated()), id: \.offset) { _, symbol in
+                        ForEach(Array(settings.shortcut.symbols.enumerated()), id: \.offset) { _, symbol in
                             KeyCapView(symbol: symbol)
                         }
                     }
@@ -67,7 +67,7 @@ struct ShortcutRecorder: View {
 
             // One trailing affordance: cancel while recording, otherwise reset to the default shortcut.
             Button {
-                isRecording ? stopRecording() : shortcutStore.reset()
+                isRecording ? stopRecording() : (settings.shortcut = .defaultShowPanel)
             } label: {
                 Image(systemName: isRecording ? "xmark.circle.fill" : "arrow.counterclockwise")
                     .font(.system(size: isRecording ? 12 : 11, weight: .medium))
@@ -106,7 +106,7 @@ struct ShortcutRecorder: View {
                 return nil
             }
             if let shortcut = HotKeyShortcut(event: event) {
-                shortcutStore.update(shortcut)
+                settings.shortcut = shortcut
                 stopRecording()
                 return nil
             }

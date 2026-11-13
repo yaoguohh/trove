@@ -19,6 +19,7 @@
 "Quit" = "Quit";
 "Check for Updates..." = "Check for Updates…";
 "Grant Accessibility Permission..." = "Grant Accessibility Permission...";
+"Allow Clipboard Access..." = "Allow Clipboard Access...";
 "1 clip kept" = "1 clip kept";
 "%lld clips kept" = "%lld clips kept";
 "Local · MIT" = "Local · MIT";
@@ -31,6 +32,9 @@
 "Type" = "Type";
 "All" = "All";
 "Clear History" = "Clear History";
+"Clear History..." = "Clear History...";
+"Clear History?" = "Clear History?";
+"Removes every clip that isn't pinned. This can't be undone." = "Removes every clip that isn't pinned. This can't be undone.";
 "Pin" = "Pin";
 "Unpin" = "Unpin";
 "Move to Pinboard" = "Move to Pinboard";
@@ -64,6 +68,7 @@
 
 /* Shortcut recorder (inline status-menu) */
 "Shortcut" = "Shortcut";
+"In use by another app" = "In use by another app";
 "Recording…" = "Recording…";
 "Cancel" = "Cancel";
 "Reset to default" = "Reset to default";

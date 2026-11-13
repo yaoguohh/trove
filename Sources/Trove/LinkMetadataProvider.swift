@@ -33,15 +33,13 @@ final class LinkMetadataProvider {
     /// Cap on simultaneous page fetches. A strip of uncached link cards used to open one URLSession
     /// each, all at once.
     nonisolated static let maxConcurrentFetches = 4
-    nonisolated static let autoFetchDefaultsKey = "Trove.linkMetadataAutoFetch"
 
     /// Whether link cards may reach out to the network to fetch title/favicon. Off until the user
     /// turns it on in the status menu: a fetch tells the link's host that the link was copied, and a
     /// one-time link whose token sits in the path (email verification, password reset) could be
     /// consumed just by showing its card. Cached records are still shown while it is off.
-    nonisolated static var isAutoFetchEnabled: Bool {
-        get { UserDefaults.standard.bool(forKey: autoFetchDefaultsKey) }
-        set { UserDefaults.standard.set(newValue, forKey: autoFetchDefaultsKey) }
+    static var isFetchingEnabled: Bool {
+        AppSettings.shared.linkPreviews
     }
 
     private var memoryCache: [String: LinkMetadata] = [:]
@@ -112,12 +110,12 @@ final class LinkMetadataProvider {
         let cached = memoryCache[key] ?? readCachedMetadata(for: key)
         if let cached {
             cacheInMemory(key, cached)
-            if !(Self.isAutoFetchEnabled && Self.isStale(cached, now: Date())) {
+            if !(Self.isFetchingEnabled && Self.isStale(cached, now: Date())) {
                 return cached
             }
         }
         // Privacy: never hit the network unless the user has turned link previews on.
-        guard Self.isAutoFetchEnabled else {
+        guard Self.isFetchingEnabled else {
             return Self.fallbackMetadata(for: requestURL)
         }
         if let task = inFlight[key] {

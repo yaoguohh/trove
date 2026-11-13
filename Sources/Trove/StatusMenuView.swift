@@ -1,28 +1,25 @@
 import AppKit
 import SwiftUI
 
-/// The menu-bar status menu, rendered as a designed SwiftUI panel (presented in a borderless drop-down
-/// window under the icon, no NSPopover arrow) instead of a
-/// stock `NSMenu`: an app-icon header, sectioned rows with SF Symbol glyphs, inline switches for the
-/// toggles, and a footer — the polished look of a modern menu-bar app. Pure view; AppDelegate injects
-/// the current state and the action callbacks.
+/// The status menu's content: an app-icon header, permission warnings, sectioned rows with inline
+/// switches bound straight to `AppSettings`, and a footer. `StatusMenuController` presents it in a
+/// borderless drop-down under the menu-bar icon and supplies the snapshot values and actions.
 struct StatusMenuView: View {
+    @ObservedObject var settings: AppSettings
     let clipCount: Int
     let version: String
     let accessibilityTrusted: Bool
-    @ObservedObject var shortcutStore: ShortcutStore
-    @State var linkPreviewsOn: Bool
-    @State var runInBackground: Bool
+    let clipboardAccessNeedsAction: Bool
+    let shortcutRegistered: Bool
+    let canCheckForUpdates: Bool
 
     var onShow: () -> Void
-    var onToggleLinkPreviews: () -> Void
-    var onToggleBackground: () -> Void
     var onClearHistory: () -> Void
     var onCheckUpdates: () -> Void
-    /// Dismiss the status menu (Esc) — Preferences now live inline here, so there's no
-    /// separate window to open; the only "navigation" the menu needs is closing itself.
+    /// Dismiss the status menu (Esc).
     var onClose: () -> Void
     var onGrantAccessibility: () -> Void
+    var onAllowClipboardAccess: () -> Void
     var onQuit: () -> Void
 
     private let width: CGFloat = 300
@@ -34,7 +31,11 @@ struct StatusMenuView: View {
 
             VStack(spacing: 2) {
                 if !accessibilityTrusted {
-                    accessibilityRow
+                    warningRow(icon: "lock.shield.fill", title: String(localized: "Grant Accessibility Permission..."), action: onGrantAccessibility)
+                    Rectangle().fill(.clear).frame(height: 4)
+                }
+                if clipboardAccessNeedsAction {
+                    warningRow(icon: "doc.on.clipboard.fill", title: String(localized: "Allow Clipboard Access..."), action: onAllowClipboardAccess)
                     Rectangle().fill(.clear).frame(height: 4)
                 }
 
@@ -42,12 +43,8 @@ struct StatusMenuView: View {
 
                 Rectangle().fill(.clear).frame(height: 6)
 
-                toggleRow(icon: "link", title: String(localized: "Link Previews"), isOn: $linkPreviewsOn) {
-                    onToggleLinkPreviews()
-                }
-                toggleRow(icon: "menubar.rectangle", title: String(localized: "Run in Background"), isOn: $runInBackground) {
-                    onToggleBackground()
-                }
+                toggleRow(icon: "link", title: String(localized: "Link Previews"), isOn: $settings.linkPreviews)
+                toggleRow(icon: "menubar.rectangle", title: String(localized: "Run in Background"), isOn: $settings.runInBackground)
 
                 hairline.padding(.vertical, 5).padding(.horizontal, 4)
 
@@ -55,8 +52,10 @@ struct StatusMenuView: View {
 
                 hairline.padding(.vertical, 5).padding(.horizontal, 4)
 
-                actionRow(icon: "trash", title: String(localized: "Clear History"), action: onClearHistory)
+                actionRow(icon: "trash", title: String(localized: "Clear History..."), action: onClearHistory)
                 actionRow(icon: "arrow.down.circle", title: String(localized: "Check for Updates..."), action: onCheckUpdates)
+                    .disabled(!canCheckForUpdates)
+                    .opacity(canCheckForUpdates ? 1 : 0.45)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 7)
@@ -67,9 +66,7 @@ struct StatusMenuView: View {
         // Tern's `popIn` for the content; the window itself fades in (AppDelegate) so the behind-window
         // blur is never transformed per frame.
         .popIn()
-        // Opaque frosted background so the popover reads as a solid menu instead of letting the desktop
-        // and windows behind it bleed through. The same dense .hudWindow material as the clipboard
-        // panel's glass, which blurs the background into a uniform wash rather than showing it.
+        // The same dense .hudWindow glass as the clipboard panel, so the menu reads as a solid surface.
         .background(VisualEffectBackground(material: .hudWindow))
         // Round the whole thing (glass + content): the borderless panel has no chrome of its own, and
         // its window shadow follows this rounded opaque shape.
@@ -79,9 +76,8 @@ struct StatusMenuView: View {
                 .strokeBorder(Theme.Line.l2, lineWidth: 1)
         }
         // Esc dismisses the menu. A borderless panel doesn't close on Esc for free; this routes the cancel
-        // command (same mechanism as ClipCard's rename editor). While the shortcut recorder is
-        // recording, its own local key monitor eats Esc first (monitors run ahead of the responder
-        // chain), so Esc cancels recording rather than closing the menu — they compose by construction.
+        // command. While the shortcut recorder is recording, its local key monitor eats Esc first
+        // (monitors run ahead of the responder chain), so Esc cancels recording rather than closing.
         .onExitCommand { onClose() }
     }
 
@@ -94,12 +90,18 @@ struct StatusMenuView: View {
     private var shortcutRow: some View {
         HStack(spacing: 10) {
             Image(systemName: "command").font(.system(size: 12)).frame(width: 17).foregroundStyle(Theme.Text.t3)
-            Text(String(localized: "Shortcut")).font(.system(size: 12)).foregroundStyle(Theme.Text.t1)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(String(localized: "Shortcut")).font(.system(size: 12)).foregroundStyle(Theme.Text.t1)
+                if !shortcutRegistered {
+                    // Another app already owns this combination; the panel can't be summoned with it.
+                    Text(String(localized: "In use by another app")).font(.system(size: 10)).foregroundStyle(Theme.Semantic.warn)
+                }
+            }
             Spacer(minLength: 8)
-            ShortcutRecorder(shortcutStore: shortcutStore)
+            ShortcutRecorder(settings: settings)
         }
         .padding(.horizontal, 8)
-        .frame(height: 30)
+        .frame(minHeight: 30)
     }
 
     // MARK: Header
@@ -151,11 +153,11 @@ struct StatusMenuView: View {
         .buttonStyle(.pressable)
     }
 
-    private var accessibilityRow: some View {
-        Button(action: onGrantAccessibility) {
+    private func warningRow(icon: String, title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
             HStack(spacing: 8) {
-                Image(systemName: "lock.shield.fill").font(.system(size: 12, weight: .semibold))
-                Text(String(localized: "Grant Accessibility Permission...")).font(.system(size: 11.5, weight: .medium))
+                Image(systemName: icon).font(.system(size: 12, weight: .semibold))
+                Text(title).font(.system(size: 11.5, weight: .medium))
                     .lineLimit(1).minimumScaleFactor(0.85)
                 Spacer()
             }
@@ -171,20 +173,17 @@ struct StatusMenuView: View {
 
     // MARK: Rows
 
-    private func actionRow(icon: String, title: String, shortcut: String? = nil, action: @escaping () -> Void) -> some View {
+    private func actionRow(icon: String, title: String, action: @escaping () -> Void) -> some View {
         HoverRow {
             HStack(spacing: 10) {
                 Image(systemName: icon).font(.system(size: 12)).frame(width: 17).foregroundStyle(Theme.Text.t3)
                 Text(title).font(.system(size: 12)).foregroundStyle(Theme.Text.t1)
                 Spacer()
-                if let shortcut {
-                    Text(shortcut).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.Text.t3)
-                }
             }
         } action: { action() }
     }
 
-    private func toggleRow(icon: String, title: String, isOn: Binding<Bool>, onToggle: @escaping () -> Void) -> some View {
+    private func toggleRow(icon: String, title: String, isOn: Binding<Bool>) -> some View {
         HoverRow {
             HStack(spacing: 10) {
                 Image(systemName: icon).font(.system(size: 12)).frame(width: 17).foregroundStyle(Theme.Text.t3)
@@ -194,7 +193,6 @@ struct StatusMenuView: View {
             }
         } action: {
             isOn.wrappedValue.toggle()
-            onToggle()
         }
     }
 
@@ -259,7 +257,7 @@ private struct MiniSwitch: View {
 }
 
 /// A dense frosted background blended behind the window (like the Dock / a native menu), so the
-/// popover stays opaque over busy backgrounds. `isEmphasized` + full opacity make the blur — not
+/// menu stays opaque over busy backgrounds. `isEmphasized` + full opacity make the blur — not
 /// alpha — do the hiding.
 private struct VisualEffectBackground: NSViewRepresentable {
     let material: NSVisualEffectView.Material

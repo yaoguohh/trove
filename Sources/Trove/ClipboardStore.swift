@@ -18,11 +18,8 @@ final class ClipboardStore: ObservableObject {
     @Published private(set) var items: [ClipboardItem] = []
     @Published private(set) var pinboards: [Pinboard] = []
 
-    /// History cap. Overridable without UI via `defaults write io.github.yaoguohh.trove Trove.maxItems 1000`
-    /// (clamped to 50…5000); peers default to 30–200, Trove to 500.
+    /// History cap for unpinned clips (`AppSettings.maxItems`); pinned clips never age out.
     let maxItems: Int
-    static let maxItemsDefaultsKey = "Trove.maxItems"
-    static let defaultMaxItems = 500
 
     private let persistence: HistoryPersistence
     private let managesSidecarFiles: Bool
@@ -44,11 +41,10 @@ final class ClipboardStore: ObservableObject {
 
     /// `storeURL` is injectable so tests can run against a temp file without
     /// touching the user's real Application Support directory.
-    init(storeURL: URL? = nil) {
+    init(storeURL: URL? = nil, maxItems: Int = AppSettings.defaultMaxItems) {
         managesSidecarFiles = (storeURL == nil)
         persistence = HistoryPersistence(fileURL: storeURL ?? AppPaths.historyFileURL)
-        let configured = UserDefaults.standard.integer(forKey: Self.maxItemsDefaultsKey)
-        maxItems = configured == 0 ? Self.defaultMaxItems : min(5000, max(50, configured))
+        self.maxItems = maxItems
         load()
         if needsMigrationSave {
             scheduleSave()

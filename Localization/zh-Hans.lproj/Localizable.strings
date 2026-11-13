@@ -19,6 +19,7 @@
 "Quit" = "退出";
 "Check for Updates..." = "检查更新…";
 "Grant Accessibility Permission..." = "授予辅助功能权限…";
+"Allow Clipboard Access..." = "允许访问剪贴板…";
 "1 clip kept" = "已存 1 条";
 "%lld clips kept" = "已存 %lld 条";
 "Local · MIT" = "本地 · MIT";
@@ -31,6 +32,9 @@
 "Type" = "类型";
 "All" = "全部";
 "Clear History" = "清空历史";
+"Clear History..." = "清空历史…";
+"Clear History?" = "清空历史？";
+"Removes every clip that isn't pinned. This can't be undone." = "将删除所有未置顶的内容，且无法撤销。";
 "Pin" = "置顶";
 "Unpin" = "取消置顶";
 "Move to Pinboard" = "收藏到";
@@ -64,6 +68,7 @@
 
 /* Shortcut recorder (inline status-menu) */
 "Shortcut" = "快捷键";
+"In use by another app" = "已被其他应用占用";
 "Recording…" = "录制中…";
 "Cancel" = "取消";
 "Reset to default" = "恢复默认";
