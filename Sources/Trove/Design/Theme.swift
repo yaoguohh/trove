@@ -15,6 +15,9 @@ enum Theme {
         static let card = Color(hex: 0x1A1E25)
         /// Hovered / selected card.
         static let raise = Color(hex: 0x252932)
+        /// The plate behind a link's favicon. Favicons are drawn for light browser chrome, so a dark
+        /// one would vanish on `card`; this is the only light surface in the app.
+        static let faviconPlate = Color.white.opacity(0.92)
     }
 
     /// Three text tiers.
@@ -35,13 +38,20 @@ enum Theme {
         static let glassHi = Color.white.opacity(0.05)
     }
 
+    /// The alpha steps for tinting a color — the accent, a hue, a semantic color — into a fill or a
+    /// line, so every tinted surface in the app reads at the same strength.
+    enum Tint {
+        static let fill = 0.16
+        static let hairline = 0.22
+    }
+
     /// The one accent. Used at fixed alpha steps for fills and rings; never a second brand hue.
     static let accent = Color(hex: 0xE8734A)        // ember
     enum Accent {
-        static let fill = Theme.accent.opacity(0.16)       // selected chip / primary button fill
-        static let ring = Theme.accent.opacity(0.18)       // focus / selection outer ring
-        static let hairline = Theme.accent.opacity(0.22)
-        static let highlight = Theme.accent.opacity(0.28)  // search-match highlight
+        static let fill = Theme.accent.opacity(Tint.fill)          // selected chip / primary button fill
+        static let ring = Theme.accent.opacity(0.18)               // focus / selection outer ring
+        static let hairline = Theme.accent.opacity(Tint.hairline)
+        static let highlight = Theme.accent.opacity(0.28)          // search-match highlight
     }
 
     /// Semantic colors are independent of the accent.

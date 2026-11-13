@@ -184,7 +184,7 @@ struct TopPinboardButton: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             // Selected: the pinboard's own color at 16% (Tern's selected-fill step); hover: l1.
-            .background(isSelected ? color.opacity(0.16) : hovering ? Theme.Line.l1 : Color.clear, in: Capsule())
+            .background(isSelected ? color.opacity(Theme.Tint.fill) : hovering ? Theme.Line.l1 : Color.clear, in: Capsule())
             // Without this the padding around the label isn't tappable (.plain buttons
             // only hit the text/icon), which made the pill feel unclickable at its edges.
             .contentShape(Capsule())

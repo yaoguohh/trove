@@ -286,7 +286,7 @@ private struct ClipCardFooter: View {
             if isTruncated {
                 // Only the rare ceiling-hit clip: honest signal that paste won't include the tail.
                 Text("Truncated")
-                    .footerChip(background: Theme.Semantic.warn.opacity(0.18), foreground: Theme.Semantic.warn, metrics: metrics)
+                    .footerChip(background: Theme.Semantic.warn.opacity(Theme.Tint.fill), foreground: Theme.Semantic.warn, metrics: metrics)
                     .help(String(localized: "This clip was too large and was shortened; pasting will not include the full content."))
             }
             Spacer()

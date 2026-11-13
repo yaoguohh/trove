@@ -110,11 +110,10 @@ struct LinkSiteIcon: View {
                     .interpolation(.high)
                     .scaledToFit()
                     .padding(size * 0.10)
-                    // Favicons are drawn for light browser chrome; a near-white plate keeps dark ones legible.
-                    .background(.white.opacity(0.92), in: RoundedRectangle(cornerRadius: Theme.Radius.icon(size: size), style: .continuous))
+                    .background(Theme.Surface.faviconPlate, in: RoundedRectangle(cornerRadius: Theme.Radius.icon(size: size), style: .continuous))
             } else {
                 RoundedRectangle(cornerRadius: Theme.Radius.icon(size: size), style: .continuous)
-                    .fill(accent.opacity(0.16))
+                    .fill(accent.opacity(Theme.Tint.fill))
                     .overlay {
                         Image(systemName: "link")
                             .font(.system(size: size * 0.42, weight: .bold))
@@ -183,7 +182,7 @@ struct SourceIcon: View {
 
     private var fallbackIcon: some View {
         RoundedRectangle(cornerRadius: Theme.Radius.icon(size: size), style: .continuous)
-            .fill(style.color.opacity(0.16))
+            .fill(style.color.opacity(Theme.Tint.fill))
             .overlay {
                 Text(style.initials)
                     .font(.system(size: size * 0.30, weight: .heavy))

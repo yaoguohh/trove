@@ -164,8 +164,8 @@ struct StatusMenuView: View {
             .padding(.horizontal, 10)
             .frame(height: 30)
             .frame(maxWidth: .infinity)
-            .background(Theme.Semantic.warn.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous).strokeBorder(Theme.Semantic.warn.opacity(0.22), lineWidth: 1))
+            .background(Theme.Semantic.warn.opacity(Theme.Tint.fill), in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous).strokeBorder(Theme.Semantic.warn.opacity(Theme.Tint.hairline), lineWidth: 1))
         }
         .buttonStyle(.pressable)
     }
