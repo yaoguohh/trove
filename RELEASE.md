@@ -51,17 +51,31 @@ Versions are passed via environment variables (no file edit needed):
 - `TROVE_BUILD_VERSION` (**must increase monotonically every release** — Sparkle compares
   `CFBundleVersion` to decide "update available") → `CFBundleVersion`
 
-CI derives these from the tag + run number automatically (see `.github/workflows/release.yml`).
+**Releases are cut by pushing a tag** (`git tag v0.2.0 && git push origin v0.2.0`). CI derives the
+marketing version from the tag and uses the workflow's `run_number` as the build number, which is the
+single source of truth for `CFBundleVersion` (see `.github/workflows/release.yml`).
+
+The manual steps below are an **emergency fallback** only. Before using them, read the build number
+of the live feed and pick a larger one, or existing users will be told there is no update:
+
+```bash
+gh release download --pattern appcast.xml --dir /tmp/trove-feed --clobber
+grep -o '<sparkle:version>[0-9]*' /tmp/trove-feed/appcast.xml
+```
+
+Local dev builds default to the commit count, so an installed dev build reads as newer than the
+release it was cut from; never ship one.
 
 ### 2. Build the signed, Sparkle-embedded app
 
 ```bash
 export TROVE_MARKETING_VERSION="0.2.0"
-export TROVE_BUILD_VERSION="2"                  # bump every release
+export TROVE_BUILD_VERSION="<larger than the live feed's sparkle:version>"
 export TROVE_SU_PUBLIC_KEY="<public key from generate_keys>"
-export TROVE_SU_FEED_URL="https://raw.githubusercontent.com/yaoguohh/trove/main/appcast.xml"
 bash scripts/package-app.sh         # → .build/Trove.app (ad-hoc, Sparkle embedded & signed)
 ```
+
+Leave `TROVE_SU_FEED_URL` unset: the script's default is the Release-asset feed described above.
 
 Sanity-check before shipping:
 
@@ -71,7 +85,7 @@ codesign --verify --deep --strict --verbose=2 .build/Trove.app   # must say "val
   .build/Trove.app/Contents/Info.plist
 ```
 
-### 3. Zip it and generate the appcast
+### 3. Build the .dmg and generate the appcast
 
 ```bash
 mkdir -p dist
@@ -111,7 +125,7 @@ rm -rf "$STAGE"
 
 ## Later: Homebrew Cask & notarization
 
-- **Homebrew Cask** (optional second install channel): a Cask pointing at the GitHub Release zip,
+- **Homebrew Cask** (optional second install channel): a Cask pointing at the GitHub Release dmg,
   with `auto_updates true` (Sparkle owns updates). Can be a self-hosted tap first.
 - **Notarization** (removes the first-launch friction): requires the Apple Developer Program
   ($99/yr) → Developer ID signing + `notarytool` + `stapler`. The packaging script already supports
