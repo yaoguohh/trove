@@ -27,6 +27,7 @@ final class ClipboardStore: ObservableObject {
     private let persistence: HistoryPersistence
     private let managesSidecarFiles: Bool
     private var isLoading = false
+    private var needsMigrationSave = false
     private var saveGeneration = 0
 
     /// Cards removed by an explicit user delete, oldest-first; ⌘Z (`undoDelete`) pops the newest back.
@@ -49,6 +50,9 @@ final class ClipboardStore: ObservableObject {
         let configured = UserDefaults.standard.integer(forKey: Self.maxItemsDefaultsKey)
         maxItems = configured == 0 ? Self.defaultMaxItems : min(5000, max(50, configured))
         load()
+        if needsMigrationSave {
+            scheduleSave()
+        }
         ensureDefaultPinboards()
         if managesSidecarFiles {
             // Thumbnails count as referenced through `thumbnailFileName`.
@@ -67,18 +71,13 @@ final class ClipboardStore: ObservableObject {
         let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return }
 
-        // A clip spills to a sidecar when its NORMALIZED (whitespace-trimmed) length exceeds the
-        // threshold, and its dedup key is the hash of that NORMALIZED form — so a re-copy that differs
-        // only by surrounding whitespace (editors/terminals toggle a trailing newline constantly)
-        // hashes identically and dedups, exactly like the small-clip path. Small clips keep the direct
-        // normalized comparison. The two predicates are mutually exclusive (hashed vs nil-hash).
-        let incomingHash = normalized.count > ClipboardItem.sidecarThreshold ? ClipboardItem.hash(normalized) : nil
-        let existing = dedupIndex(hash: incomingHash, normalizedText: normalized)
+        // Spilling to a sidecar is decided on the same normalized length the identity is built from.
+        let identity = ClipboardItem.textIdentity(normalized)
 
         // Build the next array locally and publish ONCE: every `items` assignment re-runs the
         // panel's search over the whole history, so an add must not publish three times.
         var next = items
-        if let existing {
+        if let existing = dedupIndex(contentHash: identity) {
             // Re-copy of an existing clip: move to the top, refresh source. A big clip's sidecar is
             // already on disk and unchanged, so nothing is rewritten.
             var item = next.remove(at: existing)
@@ -93,7 +92,8 @@ final class ClipboardStore: ObservableObject {
                 sourceApp: sourceApp,
                 sourceBundleIdentifier: sourceBundleIdentifier,
                 sourceAppPath: sourceAppPath,
-                normalizedHash: incomingHash
+                contentHash: identity,
+                spills: normalized.count > ClipboardItem.sidecarThreshold
             )
             next.insert(item, at: 0)
         }
@@ -101,16 +101,13 @@ final class ClipboardStore: ObservableObject {
         commit(next)
     }
 
-    /// Index of an existing live clip that dedups against the given content — by `fullTextHash` for a
-    /// spilled clip, else by normalized-text equality. Shared by `add` (ingestion) and `undoDelete`
-    /// (so a restore can't re-create a duplicate of a clip that was re-copied while it sat on the undo
-    /// stack), keeping the single-card-per-content invariant in one place.
-    private func dedupIndex(hash: String?, normalizedText: String) -> Int? {
-        items.firstIndex {
-            if let hash { return $0.fullTextHash == hash }
-            return $0.fullTextHash == nil
-                && $0.text.trimmingCharacters(in: .whitespacesAndNewlines) == normalizedText
-        }
+    /// Index of the live clip with this content identity. Shared by `add`, `addPreparedImage` and
+    /// `undoDelete` (so a restore can't re-create a duplicate of a clip that was re-copied while it sat
+    /// on the undo stack), keeping the one-card-per-content invariant in one place. A nil identity
+    /// (a legacy image) matches nothing.
+    private func dedupIndex(contentHash: String?) -> Int? {
+        guard let contentHash else { return nil }
+        return items.firstIndex { $0.contentHash == contentHash }
     }
 
     /// Builds a clip applying the hybrid storage cap. A clip whose NORMALIZED length is within
@@ -118,13 +115,15 @@ final class ClipboardStore: ObservableObject {
     /// the verbatim full text spills to a sidecar `.txt` and only the `inlineTextCap` prefix stays in
     /// `history.json`. Independently, any text past `ultimateSidecarCeiling` (verbatim) is hard-
     /// truncated and flagged, bounding even a pathological all-whitespace paste.
-    /// `normalizedHash` (non-nil iff the clip spills) is the precomputed dedup key.
+    /// `contentHash` is the precomputed identity; `spills` says whether the normalized text is over
+    /// the sidecar threshold.
     private func makeStoredItem(
         text: String,
         sourceApp: String,
         sourceBundleIdentifier: String?,
         sourceAppPath: String?,
-        normalizedHash: String?
+        contentHash: String,
+        spills: Bool
     ) -> ClipboardItem {
         var storedText = text
         var truncated = false
@@ -140,7 +139,8 @@ final class ClipboardStore: ObservableObject {
             sourceAppPath: sourceAppPath,
             // Kind is display-only (icon/label); detect from a bounded prefix so a multi-MB paste
             // doesn't scan the whole string several times on the main-thread ingestion path.
-            kind: ClipboardItem.detectKind(for: String(storedText.prefix(ClipboardItem.displayPreviewCap)))
+            kind: ClipboardItem.detectKind(for: String(storedText.prefix(ClipboardItem.displayPreviewCap))),
+            contentHash: contentHash
         )
         if truncated {
             // Surface the TRUE original size and mark the clip; paste can't include the lost tail.
@@ -149,13 +149,9 @@ final class ClipboardStore: ObservableObject {
             item.originalCharacterCount = text.count
         }
 
-        // Spill iff the clip is big by normalized length (== normalizedHash is set).
-        guard let hash = normalizedHash else { return item }
-
-        guard managesSidecarFiles else {
-            // Injected/test store: no sidecar directory to own. Keep the full text inline but still
-            // record the hash so big-clip dedup is exercised in tests.
-            item.fullTextHash = hash
+        guard spills, managesSidecarFiles else {
+            // Small clip, or an injected/test store with no sidecar directory to own: keep the full
+            // text inline. Dedup works the same either way — it only compares `contentHash`.
             return item
         }
 
@@ -166,17 +162,15 @@ final class ClipboardStore: ObservableObject {
             // history.json. This is deliberate: it guarantees that whenever a persisted item references
             // a sidecar, that sidecar exists on disk — so `fullText` (paste/copy/drag fidelity) never
             // races a pending write, and a crash leaves at most an orphan .txt (swept by
-            // reconcileTextFiles on launch), never a dangling reference. The cost is a one-time O(n)
+            // the launch-time orphan sweep), never a dangling reference. The cost is a one-time O(n)
             // write proportional to clip size, on a deliberate copy of unusual (>20k-char) content —
             // acceptable, and unlike the old per-render hang it does not repeat.
             try Data(storedText.utf8).write(to: ClipboardItem.textDirectoryURL.appendingPathComponent(fileName), options: .atomic)
-            item.fullTextHash = hash
             item.textFileName = fileName
             item.text = String(storedText.prefix(ClipboardItem.inlineTextCap))
         } catch {
+            // Fall back to full inline so paste fidelity is never silently lost.
             Log.store.error("text sidecar save failed: \(error.localizedDescription, privacy: .public)")
-            // Fall back to full inline so paste fidelity is never silently lost; still allow dedup.
-            item.fullTextHash = hash
         }
         return item
     }
@@ -203,6 +197,7 @@ final class ClipboardStore: ObservableObject {
         addPreparedImage(
             id: id,
             files: files,
+            contentHash: ClipboardItem.hash(data),
             sourceApp: sourceApp,
             sourceBundleIdentifier: sourceBundleIdentifier,
             sourceAppPath: sourceAppPath,
@@ -212,10 +207,12 @@ final class ClipboardStore: ObservableObject {
 
     /// Insert an image clip whose files are already on disk (written by `ImageIngest` on a background
     /// task). `createdAt` is the capture time, so a clip that finished encoding after a later text copy
-    /// still sorts into its true position.
+    /// still sorts into its true position. `contentHash` is the hash of the stored PNG bytes; a
+    /// re-copy of an image already in history moves that card up and drops the just-written files.
     func addPreparedImage(
         id: UUID,
         files: ImageIngest.StoredFiles,
+        contentHash: String,
         sourceApp: String,
         sourceBundleIdentifier: String?,
         sourceAppPath: String?,
@@ -223,18 +220,28 @@ final class ClipboardStore: ObservableObject {
     ) {
         var item = ClipboardItem(
             id: id,
-            text: "Image",
+            text: "",
             sourceApp: sourceApp,
             sourceBundleIdentifier: sourceBundleIdentifier,
             sourceAppPath: sourceAppPath,
             imageFileName: files.imageFileName,
             createdAt: createdAt,
             kind: .image,
-            title: "Image"
+            contentHash: contentHash
         )
         item.thumbnailFileName = files.thumbnailFileName
         var next = items
-        next.insert(item, at: 0)
+        if let existing = dedupIndex(contentHash: contentHash) {
+            Self.removeImageFile(for: item)
+            var kept = next.remove(at: existing)
+            kept.createdAt = createdAt
+            kept.sourceApp = sourceApp
+            kept.sourceBundleIdentifier = sourceBundleIdentifier
+            kept.sourceAppPath = sourceAppPath
+            next.insert(kept, at: 0)
+        } else {
+            next.insert(item, at: 0)
+        }
         commit(next)
     }
 
@@ -355,8 +362,7 @@ final class ClipboardStore: ObservableObject {
         // If the content is already live (the user re-copied it after deleting), don't create a
         // duplicate. Discard the stale undo entry and its now-redundant sidecar/image files, surfacing
         // the existing card instead — the same single-card-per-content guarantee `add` makes.
-        let normalized = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let existingIndex = dedupIndex(hash: item.fullTextHash, normalizedText: normalized) {
+        if let existingIndex = dedupIndex(contentHash: item.contentHash) {
             Self.removeImageFile(for: item)
             Self.removeTextFile(for: item)
             return items[existingIndex]
@@ -507,8 +513,11 @@ final class ClipboardStore: ObservableObject {
         case .document(let document):
             items = Self.sorted(document.items)
             pinboards = document.pinboards
+            // Items migrate while decoding; write the upgraded document back so it happens once.
+            needsMigrationSave = document.version < StoreDocument.currentVersion
         case .legacy(let legacyItems):
             items = Self.sorted(legacyItems)
+            needsMigrationSave = true
         case .missing, .corrupt:
             // Corrupt bytes were backed up by `HistoryPersistence`; start empty rather than wipe them.
             break

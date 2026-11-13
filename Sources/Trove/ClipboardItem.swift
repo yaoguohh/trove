@@ -68,9 +68,11 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
     /// inline `text` then holds only the first `inlineTextCap` characters. `nil` ⇒ `text` is the full
     /// verbatim content.
     var textFileName: String?
-    /// SHA-256 of the verbatim full text, present only for sidecar-spilled clips. Lets `add` dedup a
-    /// large re-copy in O(1) without reading every sidecar from disk.
-    var fullTextHash: String?
+    /// The clip's content identity, the single key behind "one card per content": SHA-256 of the
+    /// whitespace-trimmed text for text clips, of the stored PNG bytes for image clips. Dedup compares
+    /// only this, so it never reads a sidecar and never confuses a display string with content. nil
+    /// only for image clips stored before identities existed — those simply never dedup.
+    var contentHash: String?
     /// True only when the content was so large it hit `ultimateSidecarCeiling` and was hard-truncated
     /// (the rare case where paste loses the tail). Surfaced as a "Truncated" footer chip.
     var isTruncated: Bool
@@ -120,8 +122,14 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
     /// ≈ a 200-column × 5,000-row table — far beyond any human-copied document.
     static let ultimateSidecarCeiling = 5_000_000
 
-    static func hash(_ string: String) -> String {
-        SHA256.hash(data: Data(string.utf8)).map { String(format: "%02x", $0) }.joined()
+    static func hash(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Identity of a text clip: surrounding whitespace is not content (editors and terminals toggle a
+    /// trailing newline constantly), so a re-copy that differs only by it is the same clip.
+    static func textIdentity(_ text: String) -> String {
+        hash(Data(text.trimmingCharacters(in: .whitespacesAndNewlines).utf8))
     }
 
     /// Resident decoded full-text bound (mirrors `ImageCache`). Path-keyed; each entry charged its
@@ -170,7 +178,8 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
         isPinned: Bool = false,
         kind: ClipboardKind = .text,
         pinboardID: UUID? = nil,
-        title: String? = nil
+        title: String? = nil,
+        contentHash: String? = nil
     ) {
         self.id = id
         self.text = text
@@ -189,7 +198,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
         // also writes the sidecar file); the model defaults to "fully inline, not truncated" and the
         // store mutates these on the constructed value when it spills/ceilings the text.
         self.textFileName = nil
-        self.fullTextHash = nil
+        self.contentHash = contentHash ?? (kind == .image ? nil : Self.textIdentity(text))
         self.isTruncated = false
         self.originalCharacterCount = self.characterCount
         self.lastUsedAt = nil
@@ -213,11 +222,26 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
         characterCount = try container.decodeIfPresent(Int.self, forKey: .characterCount) ?? text.count
         // Forward-compatible: pre-sidecar history.json lacks these keys → fully-inline defaults.
         textFileName = try container.decodeIfPresent(String.self, forKey: .textFileName)
-        fullTextHash = try container.decodeIfPresent(String.self, forKey: .fullTextHash)
         isTruncated = try container.decodeIfPresent(Bool.self, forKey: .isTruncated) ?? false
         originalCharacterCount = try container.decodeIfPresent(Int.self, forKey: .originalCharacterCount) ?? characterCount
         // Forward-compatible: documents written before usage tracking lack this key → nil (never used).
         lastUsedAt = try container.decodeIfPresent(Date.self, forKey: .lastUsedAt)
+
+        // Version-1 documents (see `StoreDocument.currentVersion`): image clips carried the English
+        // placeholder "Image" as both content and title, and only sidecar-spilled text clips had an
+        // identity (as `fullTextHash`). Migrate here; the store writes the upgraded document back.
+        if kind == .image {
+            if text == "Image" { text = "" }
+            if title == "Image" { title = nil }
+        }
+        let legacy = try decoder.container(keyedBy: LegacyCodingKeys.self)
+        contentHash = try container.decodeIfPresent(String.self, forKey: .contentHash)
+            ?? legacy.decodeIfPresent(String.self, forKey: .fullTextHash)
+            ?? (kind == .image ? nil : Self.textIdentity(text))
+    }
+
+    private enum LegacyCodingKeys: String, CodingKey {
+        case fullTextHash
     }
 
     var imageFileURL: URL? {

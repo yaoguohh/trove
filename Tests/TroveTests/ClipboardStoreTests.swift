@@ -247,8 +247,8 @@ struct ContentSearchCapTests {
 }
 
 // Note: an injected `storeURL` makes the store NOT manage sidecar files, so a big clip keeps its full
-// text INLINE (with a hash). `fullText` therefore equals `text` here — the dedup/flag/migration logic
-// is still fully exercised; only the on-disk `.txt` spill is mode-gated off in tests.
+// text INLINE. `fullText` therefore equals `text` here — the dedup/flag/migration logic is still fully
+// exercised; only the on-disk `.txt` spill is mode-gated off in tests.
 @MainActor
 struct ClipboardStoreSidecarTests {
     @Test func subThresholdStoresVerbatimNoSidecar() {
@@ -256,7 +256,7 @@ struct ClipboardStoreSidecarTests {
         store.add(text: "small clip", sourceApp: "X")
         let item = store.items[0]
         #expect(item.textFileName == nil)
-        #expect(item.fullTextHash == nil)
+        #expect(item.contentHash == ClipboardItem.textIdentity("small clip"))
         #expect(item.fullText == "small clip")
         #expect(item.isTruncated == false)
         #expect(item.characterCount == 10)
@@ -279,7 +279,7 @@ struct ClipboardStoreSidecarTests {
         store.add(text: big, sourceApp: "X")
         store.add(text: big, sourceApp: "Y")
         #expect(store.items.count == 1)
-        #expect(store.items[0].fullTextHash != nil)
+        #expect(store.items[0].contentHash == ClipboardItem.textIdentity(big))
     }
 
     @Test func bigClipDedupsAcrossSurroundingWhitespace() {
@@ -304,7 +304,7 @@ struct ClipboardStoreSidecarTests {
         let (store, _) = makeTempStore()
         store.add(text: "short", sourceApp: "X")
         store.add(text: String(repeating: "z", count: ClipboardItem.sidecarThreshold + 500), sourceApp: "X")
-        // A nil-hash (small) item and a hashed (big) item never false-match.
+        // A small and a big clip have different identities and never false-match.
         #expect(store.items.count == 2)
     }
 
@@ -319,7 +319,7 @@ struct ClipboardStoreSidecarTests {
 struct ClipboardItemImageTests {
     @Test func imageCharacterCountStaysZero() {
         // Guards the init special-case (characterCount == 0 for images) through the new field set.
-        let item = ClipboardItem(text: "Image", sourceApp: "X", kind: .image)
+        let item = ClipboardItem(text: "", sourceApp: "X", kind: .image)
         #expect(item.characterCount == 0)
         #expect(item.originalCharacterCount == 0)
         #expect(item.isTruncated == false)
@@ -333,7 +333,7 @@ struct ClipboardItemMigrationTests {
             .appendingPathComponent("TroveTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let url = dir.appendingPathComponent("history.json")
-        // A pre-sidecar document: items carry NONE of textFileName/fullTextHash/isTruncated/
+        // A pre-sidecar document: items carry NONE of textFileName/contentHash/isTruncated/
         // originalCharacterCount. createdAt is the default deferred-to-date Double form.
         let legacy = """
         {"items":[{"id":"\(UUID().uuidString)","text":"hello world","sourceApp":"Safari","createdAt":700000000,"isPinned":false,"kind":"text","characterCount":11}],"pinboards":[]}
@@ -515,6 +515,7 @@ struct ClipboardStoreOrderInvariantTests {
         store.addPreparedImage(
             id: UUID(),
             files: ImageIngest.StoredFiles(imageFileName: "x.png", thumbnailFileName: nil),
+            contentHash: "x",
             sourceApp: "X", sourceBundleIdentifier: nil, sourceAppPath: nil, createdAt: Date()
         )
         #expect(emissions == 3)
@@ -528,9 +529,10 @@ struct ClipboardStoreOrderInvariantTests {
         store.addPreparedImage(
             id: UUID(),
             files: ImageIngest.StoredFiles(imageFileName: "shot.png", thumbnailFileName: "shot.thumb.png"),
+            contentHash: "shot",
             sourceApp: "X", sourceBundleIdentifier: nil, sourceAppPath: nil, createdAt: captured
         )
-        #expect(store.items.map(\.text) == ["copied after the screenshot", "Image"])
+        #expect(store.items.map(\.kind) == [.text, .image])
         #expect(store.items[1].thumbnailFileName == "shot.thumb.png")
     }
 
@@ -539,10 +541,87 @@ struct ClipboardStoreOrderInvariantTests {
         store.addPreparedImage(
             id: UUID(),
             files: ImageIngest.StoredFiles(imageFileName: "a.png", thumbnailFileName: "a.thumb.png"),
+            contentHash: "a",
             sourceApp: "X", sourceBundleIdentifier: nil, sourceAppPath: nil, createdAt: Date()
         )
         store.flush()
         let reloaded = ClipboardStore(storeURL: url)
         #expect(reloaded.items.first?.thumbnailFileName == "a.thumb.png")
+    }
+}
+
+@MainActor
+struct ClipboardStoreContentIdentityTests {
+    private func addImage(_ store: ClipboardStore, bytes: String) {
+        store.addImage(data: Data(bytes.utf8), sourceApp: "X")
+    }
+
+    @Test func undoRestoresTheDeletedImageNotAnother() throws {
+        let (store, _) = makeTempStore()
+        addImage(store, bytes: "png A")
+        addImage(store, bytes: "png B")
+        let imageA = try #require(store.items.first { $0.contentHash == ClipboardItem.hash(Data("png A".utf8)) })
+
+        store.delete(imageA)
+        let restored = store.undoDelete()
+
+        #expect(restored?.id == imageA.id)
+        #expect(store.items.count == 2)
+        #expect(store.items.contains { $0.id == imageA.id })
+    }
+
+    @Test func textReadingImageCoexistsWithAnImage() {
+        let (store, _) = makeTempStore()
+        addImage(store, bytes: "png")
+        store.add(text: "Image", sourceApp: "X")
+
+        #expect(store.items.count == 2)
+        #expect(store.items.map(\.kind) == [.text, .image])
+    }
+
+    @Test func recopyingTheSameImageMovesItsCardUp() {
+        let (store, _) = makeTempStore()
+        addImage(store, bytes: "same png")
+        store.add(text: "later text", sourceApp: "X")
+        addImage(store, bytes: "same png")
+
+        #expect(store.items.count == 2)
+        #expect(store.items.first?.kind == .image)
+    }
+
+    @Test func imageClipsStoreNoPlaceholderText() {
+        let (store, _) = makeTempStore()
+        addImage(store, bytes: "png")
+        #expect(store.items[0].text.isEmpty)
+        #expect(store.items[0].title == nil)
+        #expect(store.items[0].displayTitle == ClipboardKind.image.title)
+    }
+
+    @Test func versionOneDocumentMigrates() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TroveTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("history.json")
+        let legacy = """
+        {"items":[\
+        {"id":"\(UUID().uuidString)","text":"Image","title":"Image","sourceApp":"X","createdAt":700000002,"isPinned":false,"kind":"image","imageFileName":"a.png","characterCount":0},\
+        {"id":"\(UUID().uuidString)","text":" hi ","sourceApp":"X","createdAt":700000001,"isPinned":false,"kind":"text","characterCount":4},\
+        {"id":"\(UUID().uuidString)","text":"big prefix","sourceApp":"X","createdAt":700000000,"isPinned":false,"kind":"text","characterCount":30000,"textFileName":"b.txt","fullTextHash":"legacyhash"}\
+        ],"pinboards":[]}
+        """
+        try Data(legacy.utf8).write(to: url)
+
+        let store = ClipboardStore(storeURL: url)
+        let image = try #require(store.items.first { $0.kind == .image })
+        #expect(image.text.isEmpty)
+        #expect(image.title == nil)
+        #expect(image.contentHash == nil)
+        #expect(store.items[1].contentHash == ClipboardItem.textIdentity("hi"))
+        #expect(store.items[2].contentHash == "legacyhash")
+
+        store.flush()
+        let written = try String(contentsOf: url, encoding: .utf8)
+        #expect(written.contains("\"version\" : \(StoreDocument.currentVersion)"))
+        #expect(!written.contains("fullTextHash"))
     }
 }

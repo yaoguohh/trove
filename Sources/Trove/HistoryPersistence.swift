@@ -1,9 +1,31 @@
 import Foundation
 
 /// The on-disk shape of `history.json`.
+///
+/// `version` records the item format the document was written with. Older documents are migrated
+/// while decoding (see `ClipboardItem.init(from:)`) and rewritten by the store on launch.
+/// - 1: no `version` key; image clips stored "Image" as text and title; only sidecar-spilled text
+///   clips had an identity (`fullTextHash`).
+/// - 2: every clip carries `contentHash`; image clips have empty text and no placeholder title.
 struct StoreDocument: Codable, Sendable {
+    static let currentVersion = 2
+
+    var version: Int
     var items: [ClipboardItem]
     var pinboards: [Pinboard]
+
+    init(items: [ClipboardItem], pinboards: [Pinboard]) {
+        version = Self.currentVersion
+        self.items = items
+        self.pinboards = pinboards
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decodeIfPresent(Int.self, forKey: .version) ?? 1
+        items = try container.decode([ClipboardItem].self, forKey: .items)
+        pinboards = try container.decode([Pinboard].self, forKey: .pinboards)
+    }
 }
 
 /// Reading and writing `history.json`, and sweeping the sidecar directories. Pure file I/O with no

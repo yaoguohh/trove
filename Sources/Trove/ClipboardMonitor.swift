@@ -149,6 +149,7 @@ final class ClipboardMonitor {
                 Log.images.error("pasteboard image could not be decoded; dropped")
                 return
             }
+            let contentHash = ClipboardItem.hash(png)
             let files: ImageIngest.StoredFiles
             do {
                 files = try ImageIngest.writeFiles(id: id, png: png, directory: directory)
@@ -160,6 +161,7 @@ final class ClipboardMonitor {
                 store.addPreparedImage(
                     id: id,
                     files: files,
+                    contentHash: contentHash,
                     sourceApp: source.name,
                     sourceBundleIdentifier: source.bundleIdentifier,
                     sourceAppPath: source.path,
