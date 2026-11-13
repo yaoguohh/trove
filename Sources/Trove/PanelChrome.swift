@@ -22,13 +22,7 @@ enum PanelChrome {
         container.wantsLayer = true
         container.layer?.backgroundColor = NSColor.clear.cgColor
 
-        let glass = NSVisualEffectView(frame: .zero)
-        glass.material = .hudWindow
-        glass.blendingMode = .behindWindow
-        glass.state = .active
-        // Denser, more saturated variant — extra text suppression at no transparency cost.
-        glass.isEmphasized = true
-        glass.alphaValue = 1.0
+        let glass = makeGlass()
         glass.wantsLayer = true
         glass.maskImage = .roundedMask(cornerRadius: cornerRadius)
         glass.translatesAutoresizingMaskIntoConstraints = false
@@ -46,6 +40,18 @@ enum PanelChrome {
             content.bottomAnchor.constraint(equalTo: container.bottomAnchor)
         ])
         return container
+    }
+
+    /// The one glass material, shared by the panel and the status menu: the densest dark material,
+    /// blending with what is behind the window, emphasized for extra text suppression.
+    @MainActor
+    static func makeGlass() -> NSVisualEffectView {
+        let glass = NSVisualEffectView(frame: .zero)
+        glass.material = .hudWindow
+        glass.blendingMode = .behindWindow
+        glass.state = .active
+        glass.isEmphasized = true
+        return glass
     }
 }
 

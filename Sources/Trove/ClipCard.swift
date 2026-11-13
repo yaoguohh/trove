@@ -155,14 +155,9 @@ private struct ClipCardChrome<Header: View, Content: View, Footer: View>: View {
                 .padding(-ringWidth / 2)
                 .opacity(isSelected ? 1 : 0)
         }
-        .shadow(
-            color: .black.opacity(isHovered || isSelected ? 0.26 : 0.14),
-            radius: isHovered || isSelected ? 18 : 8,
-            x: 0,
-            y: isHovered || isSelected ? 8 : 4
-        )
-        .animation(Theme.Motion.out(0.2), value: isHovered)
-        .animation(Theme.Motion.out(0.2), value: isSelected)
+        .shadow(isHovered || isSelected ? Theme.Shadow.lifted : Theme.Shadow.rest)
+        .animation(Theme.Motion.out(), value: isHovered)
+        .animation(Theme.Motion.out(), value: isSelected)
     }
 }
 

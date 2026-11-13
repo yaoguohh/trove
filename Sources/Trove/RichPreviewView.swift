@@ -32,7 +32,7 @@ struct SelectableText: NSViewRepresentable {
             textView.isHorizontallyResizable = false
             textView.textContainer?.widthTracksTextView = true
             textView.font = font
-            textView.textColor = NSColor(hex: 0xD4D8E4)   // Theme.Text.t1
+            textView.textColor = NSColor(Theme.Text.t1)
             textView.string = text
         }
         return scroll

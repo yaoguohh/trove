@@ -25,10 +25,6 @@ final class ClipboardPanelController {
     private var isHiding = false
     private var visibilityGeneration = 0
 
-    /// Panel corner radius. The glass mask (AppKit) and the content clip (SwiftUI) must use
-    /// the same value — keep `ClipboardPanelView`'s 16pt corners in sync with this.
-    static let cornerRadius: CGFloat = 16
-
     /// Panel non-card width (toolbar + side insets around the card strip). Used to derive the
     /// ⌘←/⌘→ page size in `visibleCardCount()`.
     private static let chromeWidth: CGFloat = 96
@@ -79,7 +75,7 @@ final class ClipboardPanelController {
         // Fade the STATIONARY window in on Tern's out curve (alpha on a stationary behind-window blur
         // is cached and cheap; moving it is not). The content pops in on top — ClipboardPanelView.popIn.
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = Theme.Motion.seconds(0.18)
+            context.duration = Theme.Motion.seconds(Theme.Motion.Duration.appear)
             context.timingFunction = Theme.Motion.outTiming
             panel.animator().alphaValue = 1
         }
@@ -121,7 +117,7 @@ final class ClipboardPanelController {
         // is exactly what made the dismissal stutter. With the window stationary the backdrop blur is
         // cached and only the alpha animates, so the fade holds 60fps.
         NSAnimationContext.runAnimationGroup({ context in
-            context.duration = Theme.Motion.seconds(0.15)
+            context.duration = Theme.Motion.seconds(Theme.Motion.Duration.fade)
             context.timingFunction = Theme.Motion.easeTiming
             panel.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
@@ -165,7 +161,7 @@ final class ClipboardPanelController {
             backing: .buffered,
             defer: false
         )
-        let containerView = PanelChrome.makeGlassContainer(content: hosting.view, cornerRadius: Self.cornerRadius)
+        let containerView = PanelChrome.makeGlassContainer(content: hosting.view, cornerRadius: Theme.Radius.panel)
 
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true

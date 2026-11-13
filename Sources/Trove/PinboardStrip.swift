@@ -85,7 +85,7 @@ struct PinboardStrip: View {
         )
         .offset(x: chipOffsetX(pinboard.id, originalIndex: originalIndex))
         .scaleEffect(isDragging ? 1.05 : 1)
-        .shadow(color: .black.opacity(isDragging ? 0.22 : 0), radius: isDragging ? 8 : 0, y: 3)
+        .shadow(isDragging ? Theme.Shadow.lifted : ShadowStyle(opacity: 0, radius: 0, y: 0))
         .zIndex(isDragging ? 1 : 0)
         // High priority so a real drag (≥8pt) pre-empts the button's tap; a clean click
         // never starts the drag and still toggles the filter.

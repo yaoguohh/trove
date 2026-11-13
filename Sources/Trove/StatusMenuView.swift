@@ -67,7 +67,7 @@ struct StatusMenuView: View {
         // blur is never transformed per frame.
         .popIn()
         // The same dense .hudWindow glass as the clipboard panel, so the menu reads as a solid surface.
-        .background(VisualEffectBackground(material: .hudWindow))
+        .background(GlassBackground())
         // Round the whole thing (glass + content): the borderless panel has no chrome of its own, and
         // its window shadow follows this rounded opaque shape.
         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
@@ -108,7 +108,7 @@ struct StatusMenuView: View {
 
     private var header: some View {
         HStack(spacing: 9) {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
+            RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
                 .fill(Theme.accent)
                 .frame(width: 24, height: 24)
                 .overlay(
@@ -252,26 +252,15 @@ private struct MiniSwitch: View {
                 Circle().fill(isOn ? Theme.Surface.coal : Theme.Text.t1).padding(2),
                 alignment: isOn ? .trailing : .leading
             )
-            .animation(Theme.Motion.out(0.2), value: isOn)
+            .animation(Theme.Motion.out(), value: isOn)
     }
 }
 
-/// A dense frosted background blended behind the window (like the Dock / a native menu), so the
-/// menu stays opaque over busy backgrounds. `isEmphasized` + full opacity make the blur — not
-/// alpha — do the hiding.
-private struct VisualEffectBackground: NSViewRepresentable {
-    let material: NSVisualEffectView.Material
-
+/// The panel's glass (`PanelChrome.makeGlass`) as a SwiftUI background.
+private struct GlassBackground: NSViewRepresentable {
     func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = material
-        view.blendingMode = .behindWindow
-        view.state = .active
-        view.isEmphasized = true
-        return view
+        PanelChrome.makeGlass()
     }
 
-    func updateNSView(_ view: NSVisualEffectView, context: Context) {
-        view.material = material
-    }
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
 }

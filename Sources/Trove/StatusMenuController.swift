@@ -113,7 +113,7 @@ final class StatusMenuController {
         panel.alphaValue = 0
         panel.makeKeyAndOrderFront(nil)
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = Theme.Motion.seconds(0.18)
+            context.duration = Theme.Motion.seconds(Theme.Motion.Duration.appear)
             context.timingFunction = Theme.Motion.outTiming
             panel.animator().alphaValue = 1
         }

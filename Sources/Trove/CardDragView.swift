@@ -147,15 +147,15 @@ final class CardDragView: NSView, NSDraggingSource {
         let previewSize = NSSize(width: max(160, min(size.width, 260)), height: 84)
         let image = NSImage(size: previewSize)
         image.lockFocus()
-        NSColor.windowBackgroundColor.withAlphaComponent(0.96).setFill()
-        NSBezierPath(roundedRect: NSRect(origin: .zero, size: previewSize), xRadius: 14, yRadius: 14).fill()
+        NSColor(Theme.Surface.card).setFill()
+        NSBezierPath(roundedRect: NSRect(origin: .zero, size: previewSize), xRadius: Theme.Radius.card, yRadius: Theme.Radius.card).fill()
 
         let title = item.displayTitle.isEmpty ? item.kind.title : item.displayTitle
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineBreakMode = .byTruncatingTail
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 15, weight: .semibold),
-            .foregroundColor: NSColor.labelColor,
+            .foregroundColor: NSColor(Theme.Text.t1),
             .paragraphStyle: paragraph
         ]
         title.draw(

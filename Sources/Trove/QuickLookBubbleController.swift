@@ -74,10 +74,10 @@ final class QuickLookBubbleController {
             window.alphaValue = 0
             window.orderFront(nil)
             // Tern's popIn: the window fades (cheap: no blur to recompute) while the bubble content
-            // scales from 0.97 and rises 3pt — see QuickLookBubbleView.
+            // scales from Theme.Motion.scale and rises 3pt — see QuickLookBubbleView.
             popState.generation &+= 1
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = Theme.Motion.seconds(0.16)
+                context.duration = Theme.Motion.seconds(Theme.Motion.Duration.appear)
                 context.timingFunction = Theme.Motion.outTiming
                 window.animator().alphaValue = 1
             }
@@ -220,8 +220,8 @@ private struct QuickLookBubbleView: View {
                 .padding(.bottom, tail) // keep content clear of the tail notch
         }
         .compositingGroup()
-        .shadow(color: .black.opacity(0.55), radius: 16, y: 6)
-        .popIn(trigger: pop.generation, duration: 0.16, nudge: 3)
+        .shadow(Theme.Shadow.floating)
+        .popIn(trigger: pop.generation, nudge: 3)
         // A tiny, non-interactive hint that the peek is expandable (↗ opens a URL in the browser, ⤢
         // opens the inspect window) — small and tertiary so it never dominates the bubble.
         .overlay(alignment: .topTrailing) { expandHint(item) }
@@ -284,7 +284,7 @@ private struct QuickLookBubbleView: View {
 /// (the base junctions are tangent to the bottom edge → a soft concave fillet, not a hard triangle),
 /// narrowing to a soft point. One path means fill and stroke share a seamless silhouette (no seam).
 struct BubbleTailShape: Shape {
-    var cornerRadius: CGFloat = 16
+    var cornerRadius: CGFloat = Theme.Radius.panel
     var tailWidth: CGFloat = 26
     var tailHeight: CGFloat
 

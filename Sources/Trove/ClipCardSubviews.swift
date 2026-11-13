@@ -13,9 +13,9 @@ struct ImagePreview: View {
                     .resizable()
                     .scaledToFit()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.media, style: .continuous))
                     // A hairline keeps a white-background image from reading as a hole in the card.
-                    .overlay { RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.Line.l2, lineWidth: 1) }
+                    .overlay { RoundedRectangle(cornerRadius: Theme.Radius.media, style: .continuous).strokeBorder(Theme.Line.l2, lineWidth: 1) }
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: "photo")
@@ -64,7 +64,7 @@ struct LinkPreview: View {
                     // fetched title then cross-fades in instead of snapping.
                     .shimmer(!resolved && LinkMetadataProvider.isFetchingEnabled)
                     .contentTransition(.opacity)
-                    .animation(Theme.Motion.ease(0.2), value: metadata)
+                    .animation(Theme.Motion.ease, value: metadata)
             }
 
             // The always-on route line — what tells two same-host links apart. Shown as a full URL
@@ -117,9 +117,10 @@ struct LinkSiteIcon: View {
                     .interpolation(.high)
                     .scaledToFit()
                     .padding(size * 0.10)
-                    .background(.white.opacity(0.92), in: RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+                    // Favicons are drawn for light browser chrome; a near-white plate keeps dark ones legible.
+                    .background(.white.opacity(0.92), in: RoundedRectangle(cornerRadius: Theme.Radius.icon(size: size), style: .continuous))
             } else {
-                RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.Radius.icon(size: size), style: .continuous)
                     .fill(accent.opacity(0.16))
                     .overlay {
                         Image(systemName: "link")
@@ -129,7 +130,7 @@ struct LinkSiteIcon: View {
             }
         }
         .frame(width: size, height: size)
-        .shadow(color: .black.opacity(0.08), radius: 4, x: 0, y: 2)
+        .shadow(Theme.Shadow.badge(size: size))
     }
 }
 
@@ -188,24 +189,18 @@ struct SourceIcon: View {
             }
         }
         .frame(width: size, height: size)
-        .shadow(color: .black.opacity(0.14), radius: size * 0.13, x: 0, y: size * 0.06)
+        .shadow(Theme.Shadow.badge(size: size))
     }
 
     private var fallbackIcon: some View {
-        RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
+        RoundedRectangle(cornerRadius: Theme.Radius.icon(size: size), style: .continuous)
             .fill(style.color.opacity(0.16))
             .overlay {
-                if let symbolName = style.symbolName {
-                Image(systemName: symbolName)
-                    .font(.system(size: size * 0.48, weight: .bold))
+                Text(style.initials)
+                    .font(.system(size: size * 0.30, weight: .heavy))
                     .foregroundStyle(style.color)
-                } else {
-                    Text(style.initials)
-                        .font(.system(size: size * 0.30, weight: .heavy))
-                        .foregroundStyle(style.color)
-                        .minimumScaleFactor(0.70)
-                        .lineLimit(1)
-                }
+                    .minimumScaleFactor(0.70)
+                    .lineLimit(1)
             }
     }
 }

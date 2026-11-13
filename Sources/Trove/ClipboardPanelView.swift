@@ -41,30 +41,30 @@ struct ClipboardPanelView: View {
             timeline
                 .zIndex(2)
         }
-        // Tern's popIn on the CONTENT only (scale 0.97 + a 4pt rise): the glass behind it is an AppKit
+        // Tern's popIn on the CONTENT only (Motion.scale + a 4pt rise): the glass behind it is an AppKit
         // behind-window blur that must never be transformed per frame, so the window just fades in
         // (ClipboardPanelController.show) while the content arrives on top of it.
-        .popIn(trigger: model.showToken, duration: 0.18, nudge: 4)
+        .popIn(trigger: model.showToken, nudge: 4)
         .frame(minWidth: 720, minHeight: 240)
         .background {
-            // 16pt corners must match the glass mask in ClipboardPanelController.cornerRadius.
+            // Theme.Radius.panel, the same radius as the glass mask behind it.
             // No fill tint: the chrome is the material alone plus an l2 hairline and a one-pixel
             // glass-hi along the top (stopping short of the corner arcs).
-            RoundedRectangle(cornerRadius: ClipboardPanelController.cornerRadius, style: .continuous)
+            RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
                 .fill(panelOverlay)
                 .overlay {
-                    RoundedRectangle(cornerRadius: ClipboardPanelController.cornerRadius, style: .continuous)
+                    RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
                         .strokeBorder(Theme.Line.l2, lineWidth: 1)
                 }
                 .overlay(alignment: .top) {
                     Rectangle()
                         .fill(Theme.Line.glassHi)
                         .frame(height: 1)
-                        .padding(.horizontal, ClipboardPanelController.cornerRadius)
+                        .padding(.horizontal, Theme.Radius.panel)
                         .padding(.top, 1)
                 }
         }
-        .clipShape(RoundedRectangle(cornerRadius: ClipboardPanelController.cornerRadius, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
         .environment(\.clipFiles, store.files)
         .onTapGesture {
             // Clicking empty panel chrome re-focuses the search field.
@@ -233,17 +233,17 @@ struct ClipboardPanelView: View {
                                         }
                                     }
                                     .zIndex(hoveredID == item.id ? 20 : model.selectedID == item.id ? 10 : 0)
-                                    // Tern's card entrance/exit: fade + scale 0.97 + a 4pt rise, on the
+                                    // Tern's card entrance/exit: fade + Motion.scale + a 4pt rise, on the
                                     // out curve (driven by the LazyHStack's animation(value:) below).
                                     .transition(.asymmetric(
-                                        insertion: .opacity.combined(with: .scale(scale: 0.97)).combined(with: .offset(y: 4)),
-                                        removal: .opacity.combined(with: .scale(scale: 0.97))
+                                        insertion: .opacity.combined(with: .scale(scale: Theme.Motion.scale)).combined(with: .offset(y: 4)),
+                                        removal: .opacity.combined(with: .scale(scale: Theme.Motion.scale))
                                     ))
                                     .onContinuousHover(coordinateSpace: .global) { phase in
                                         switch phase {
                                         case .active(let location):
                                             if hoveredID != item.id {
-                                                withAnimation(Theme.Motion.out(0.2)) {
+                                                withAnimation(Theme.Motion.out()) {
                                                     hoveredID = item.id
                                                 }
                                             }
@@ -261,7 +261,7 @@ struct ClipboardPanelView: View {
                                             lastHoverLocation = location
                                         case .ended:
                                             if hoveredID == item.id {
-                                                withAnimation(Theme.Motion.out(0.2)) {
+                                                withAnimation(Theme.Motion.out()) {
                                                     hoveredID = nil
                                                 }
                                             }
@@ -277,7 +277,7 @@ struct ClipboardPanelView: View {
                             .padding(.bottom, metrics.bottomPadding)
                             // Animate the row whenever its membership changes (a new clip, a delete, a
                             // filter): neighbors slide to close the gap and the card transitions play.
-                            .animation(Theme.Motion.out(0.22), value: filteredItems.map(\.id))
+                            .animation(Theme.Motion.out(Theme.Motion.Duration.reflow), value: filteredItems.map(\.id))
                         }
                         .scrollClipDisabled()
                         .scrollIndicators(.hidden)
@@ -289,7 +289,7 @@ struct ClipboardPanelView: View {
                                 return
                             }
                             if let selectedID = model.selectedID {
-                                withAnimation(Theme.Motion.out(0.3)) {
+                                withAnimation(Theme.Motion.out(Theme.Motion.Duration.slow)) {
                                     proxy.scrollTo(selectedID, anchor: .center)
                                 }
                             }
@@ -313,7 +313,7 @@ struct ClipboardPanelView: View {
                 .foregroundStyle(Theme.Text.t2)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .popIn(duration: 0.32, fade: true, nudge: 6)
+        .popIn(duration: Theme.Motion.Duration.slow, fade: true, nudge: 6)
     }
 
     @ViewBuilder

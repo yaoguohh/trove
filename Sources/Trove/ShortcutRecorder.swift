@@ -11,9 +11,9 @@ struct KeyCapView: View {
             .frame(minWidth: 15, minHeight: 19)
             .padding(.horizontal, 3)
             .foregroundStyle(Theme.Text.t1)
-            .background(Theme.Line.l1, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+            .background(Theme.Line.l1, in: RoundedRectangle(cornerRadius: Theme.Radius.keycap, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.Radius.keycap, style: .continuous)
                     .strokeBorder(Theme.Line.l2, lineWidth: 1)
             }
     }
@@ -57,11 +57,11 @@ struct ShortcutRecorder: View {
                 .frame(minWidth: 58, minHeight: 25)
                 .padding(.horizontal, 5)
                 .overlay {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
                         .strokeBorder(isRecording ? Theme.accent : Theme.Line.l3,
                                       lineWidth: isRecording ? 1.5 : 1)
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous))
             }
             .buttonStyle(.pressable)
 
