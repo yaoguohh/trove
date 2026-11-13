@@ -5,7 +5,7 @@ import SwiftUI
 @MainActor
 final class ClipboardPanelController {
     private let store: ClipboardStore
-    private let monitor: ClipboardMonitor
+    private let pasteboard: ClipPasteboard
     private var panel: NSPanel?
     private var hostingController: NSHostingController<ClipboardPanelView?>?
     // App-lifetime observer (the controller is held by AppDelegate for the whole run), so it never
@@ -37,9 +37,9 @@ final class ClipboardPanelController {
         panel?.isVisible == true
     }
 
-    init(store: ClipboardStore, monitor: ClipboardMonitor) {
+    init(store: ClipboardStore, pasteboard: ClipPasteboard) {
         self.store = store
-        self.monitor = monitor
+        self.pasteboard = pasteboard
         self.model = PanelViewModel(store: store)
         // The Space peek is one-shot: it shows the card selected at the moment Space was pressed.
         // ANY later selection change (←/→ navigation or hover) dismisses it instead of letting the
@@ -140,7 +140,7 @@ final class ClipboardPanelController {
     private func makeContent() -> ClipboardPanelView {
         ClipboardPanelView(
             store: store,
-            monitor: monitor,
+            pasteboard: pasteboard,
             model: model,
             close: { [weak self] in self?.hide() },
             reopen: { [weak self] in self?.show() },
@@ -363,7 +363,7 @@ final class ClipboardPanelController {
     private func performPaste() {
         guard let item = model.selectedItem else { return }
         hide()
-        monitor.copyAndPaste(item)
+        pasteboard.paste(item)
     }
 
     /// Delete the selected card (⌦ or ⌘⌫) and re-select a sensible neighbor at the same position so

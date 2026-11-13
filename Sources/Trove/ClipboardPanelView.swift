@@ -3,7 +3,7 @@ import SwiftUI
 
 struct ClipboardPanelView: View {
     @ObservedObject var store: ClipboardStore
-    let monitor: ClipboardMonitor
+    let pasteboard: ClipPasteboard
     @ObservedObject var model: PanelViewModel
     let close: () -> Void
     let reopen: () -> Void
@@ -324,7 +324,7 @@ struct ClipboardPanelView: View {
         // Clicking the card / Return pastes; the menu offers copy + organize. Text clips are stored as
         // plain text only, so there is no separate "paste as plain text".
         Button {
-            monitor.copy(item)
+            pasteboard.copy(item)
             close()
         } label: {
             Label("Copy", systemImage: "doc.on.doc")
@@ -378,7 +378,7 @@ struct ClipboardPanelView: View {
 
     private func paste(_ item: ClipboardItem) {
         close()
-        monitor.copyAndPaste(item)
+        pasteboard.paste(item)
     }
 
     // MARK: - Inline title rename

@@ -1,5 +1,7 @@
 import AppKit
 
+/// Watches the system pasteboard and adds every new copy to the history. Writing clips back (copy,
+/// paste) is `ClipPasteboard`'s job; it tells the monitor about its own writes.
 @MainActor
 final class ClipboardMonitor {
     /// `changeCount` is the only change signal NSPasteboard offers (no notification API), so every
@@ -10,11 +12,6 @@ final class ClipboardMonitor {
     private let store: ClipboardStore
     private var lastChangeCount: Int
     private var timer: Timer?
-    private var lastTextWrittenByApp: String?
-    private var lastImageDataWrittenByApp: Data?
-    /// Keeps the lazy TIFF provider alive while Trove's image owns the pasteboard.
-    private var imagePasteboardOwner: ImagePasteboardOwner?
-    private var pasteTargetSnapshot: PasteTargetSnapshot?
 
     /// `pasteboard` is injectable so tests can drive a private named pasteboard.
     init(store: ClipboardStore, pasteboard: NSPasteboard = .general) {
@@ -37,51 +34,16 @@ final class ClipboardMonitor {
         self.timer = timer
     }
 
-    func copy(_ item: ClipboardItem) {
-        pasteboard.clearContents()
-        if item.kind == .image, let url = store.files.imageURL(for: item), let png = try? Data(contentsOf: url) {
-            // The stored PNG bytes go back verbatim: no decode, no TIFF→PNG round trip. The owner
-            // supplies a TIFF only if a consumer asks for one. poll() recognises the echo by comparing
-            // these exact bytes.
-            lastImageDataWrittenByApp = png
-            let owner = ImagePasteboardOwner(png: png)
-            imagePasteboardOwner = owner
-            pasteboard.declareTypes([.png, .tiff], owner: owner)
-            pasteboard.setData(png, forType: .png)
-        } else {
-            // The FULL text (sidecar-backed for big clips). Both the pasteboard write AND the
-            // echo-suppression record must use the same full string, or poll() would see the written
-            // content as "new" (the inline prefix != full) and re-ingest the clip on every select.
-            let full = store.files.fullText(of: item)
-            lastTextWrittenByApp = full
-            pasteboard.setString(full, forType: .string)
-        }
-    }
-
-    func copyAndPaste(_ item: ClipboardItem) {
-        let targetSnapshot = pasteTargetSnapshot
-        copy(item)
-        // Record the paste as a "use" (the single hook for every paste-from-panel action — keyboard
-        // Return and the view's click/menu paste both land here). poll() echo-suppresses this
-        // write, so a use never re-enters add(); recordUse only stamps lastUsedAt for the summon bias.
-        store.recordUse(item)
-
-        let text = item.kind == .image ? nil : store.files.fullText(of: item)
-        Task { @MainActor in
-            let result = await PasteExecutor.shared.paste(text: text, target: targetSnapshot)
-            Log.paste.debug("paste via \(result.strategy.rawValue, privacy: .public) success=\(result.success)")
-            clearPasteTarget()
-        }
-    }
-
-    func rememberPasteTarget() {
-        pasteTargetSnapshot = PasteTargetSnapshot.capture(excluding: Bundle.main.bundleIdentifier)
+    /// Treat whatever is on the pasteboard now as already seen. `ClipPasteboard` calls this right
+    /// after writing a clip back, so Trove's own write is never ingested as a new copy.
+    func acknowledgeOwnWrite() {
+        lastChangeCount = pasteboard.changeCount
     }
 
     /// One tick: compare `changeCount` (one IPC), and only when it moved read the types + string and
     /// decide. Text is read before any bitmap; bitmaps are read only when the decision says so, so a
     /// rich-text copy never pulls a multi-MB TIFF across the pasteboard server.
-    private func poll() {
+    func poll() {
         let changeCount = pasteboard.changeCount
         guard changeCount != lastChangeCount else { return }
         lastChangeCount = changeCount
@@ -95,10 +57,6 @@ final class ClipboardMonitor {
         case .nothing:
             break
         case .text(let text):
-            if text == lastTextWrittenByApp {
-                lastTextWrittenByApp = nil
-                return
-            }
             let source = Self.sourceApplication()
             store.add(
                 text: text,
@@ -108,12 +66,6 @@ final class ClipboardMonitor {
             )
         case .image(let type):
             guard let data = pasteboard.data(forType: type.pasteboardType) else { return }
-            if data == lastImageDataWrittenByApp {
-                lastImageDataWrittenByApp = nil
-                return
-            }
-            // Any other image supersedes the echo record — never pin a stale PNG in memory.
-            lastImageDataWrittenByApp = nil
             ingest(PasteboardImagePayload(data: data, type: type), source: Self.sourceApplication())
         }
     }
@@ -170,9 +122,5 @@ final class ClipboardMonitor {
                 )
             }
         }
-    }
-
-    private func clearPasteTarget() {
-        pasteTargetSnapshot = nil
     }
 }

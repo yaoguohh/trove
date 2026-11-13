@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settings = AppSettings.shared
     private lazy var store = ClipboardStore(maxItems: settings.maxItems)
     private var monitor: ClipboardMonitor?
+    private var clipPasteboard: ClipPasteboard?
     private var hotKeyManager: HotKeyManager?
     private var statusItem: NSStatusItem?
     private var statusMenu: StatusMenuController?
@@ -22,8 +23,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         monitor = clipboardMonitor
         clipboardMonitor.start()
         Log.clipboard.notice("clipboard access behavior: \(ClipboardAccessPermission.logDescription, privacy: .public)")
+        let pasteboard = ClipPasteboard(store: store, monitor: clipboardMonitor)
+        clipPasteboard = pasteboard
 
-        panelController = ClipboardPanelController(store: store, monitor: clipboardMonitor)
+        panelController = ClipboardPanelController(store: store, pasteboard: pasteboard)
         let hotKeys = HotKeyManager { [weak self] in
             self?.togglePanel()
         }
@@ -90,7 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showPanel() {
-        monitor?.rememberPasteTarget()
+        clipPasteboard?.rememberTarget()
         panelController?.show()
     }
 

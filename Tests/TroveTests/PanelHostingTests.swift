@@ -71,6 +71,12 @@ struct PanelHostingTests {
             .appendingPathComponent("TrovePanelTests-\(UUID().uuidString)")
         let store = ClipboardStore(files: ClipFiles(root: directory))
         store.add(text: "Panel lifecycle fixture", sourceApp: "Test")
-        return (ClipboardPanelController(store: store, monitor: ClipboardMonitor(store: store)), directory)
+        let pasteboard = NSPasteboard.withUniqueName()
+        let clipPasteboard = ClipPasteboard(
+            store: store,
+            monitor: ClipboardMonitor(store: store, pasteboard: pasteboard),
+            pasteboard: pasteboard
+        )
+        return (ClipboardPanelController(store: store, pasteboard: clipPasteboard), directory)
     }
 }

@@ -1,12 +1,10 @@
 import AppKit
-import ApplicationServices
 import Carbon  // ProcessSerialNumber (Process Manager) for front-window-only activation
 
 struct PasteTargetSnapshot {
     let application: NSRunningApplication
     let processIdentifier: pid_t
     let localizedName: String
-    let bundleIdentifier: String?
     let focusedElement: AXUIElement?
     let capturedAt: Date
 
@@ -17,7 +15,6 @@ struct PasteTargetSnapshot {
             application: application,
             processIdentifier: application.processIdentifier,
             localizedName: application.localizedName ?? "Unknown",
-            bundleIdentifier: application.bundleIdentifier,
             focusedElement: Self.focusedElement(in: application.processIdentifier),
             capturedAt: Date()
         )
@@ -79,7 +76,7 @@ final class PasteExecutor {
     /// Delivers what is already on the pasteboard into `target`. `text` is the clip's full text, or nil
     /// for an image (which can only arrive by ⌘V).
     func paste(text: String?, target: PasteTargetSnapshot?) async -> PasteExecutionResult {
-        guard isAccessibilityTrusted(promptIfNeeded: true) else {
+        guard AccessibilityPermission.requestIfNeeded() else {
             return PasteExecutionResult(
                 strategy: .pasteboardOnly,
                 success: false,
@@ -108,14 +105,7 @@ final class PasteExecutor {
             } else {
                 NSApp.deactivate()
             }
-            let keystrokeSent = sendPasteKeystroke()
-            return PasteExecutionResult(
-                strategy: .pasteboardKeystroke,
-                success: keystrokeSent,
-                detail: keystrokeSent
-                    ? "No fresh paste target snapshot; refocused target and sent fallback Cmd+V."
-                    : "No fresh paste target snapshot and Cmd+V synthesis failed; pasteboard only."
-            )
+            return keystrokeResult(target: "the frontmost app (no fresh target snapshot)")
         }
 
         // AX insertion didn't take while the target was in the background — secure password fields (and
@@ -128,12 +118,17 @@ final class PasteExecutor {
             return result
         }
 
-        let keystrokeSent = sendPasteKeystroke()
+        return keystrokeResult(target: target.localizedName)
+    }
+
+    /// Last resort: synthesize ⌘V into whatever is frontmost now.
+    private func keystrokeResult(target: String) -> PasteExecutionResult {
+        let sent = sendPasteKeystroke()
         return PasteExecutionResult(
             strategy: .pasteboardKeystroke,
-            success: keystrokeSent,
-            detail: keystrokeSent
-                ? "Sent fallback Cmd+V to \(target.localizedName)."
+            success: sent,
+            detail: sent
+                ? "Sent fallback Cmd+V to \(target)."
                 : "Failed to synthesize Cmd+V; left content on the pasteboard only."
         )
     }
@@ -171,14 +166,6 @@ final class PasteExecutor {
         return nil
     }
 
-    private func isAccessibilityTrusted(promptIfNeeded: Bool) -> Bool {
-        if AccessibilityPermission.isTrusted {
-            return true
-        }
-        guard promptIfNeeded else { return false }
-        return AccessibilityPermission.requestIfNeeded()
-    }
-
     private func bringTargetToFront(_ target: PasteTargetSnapshot) async {
         // NSRunningApplication.activate(options:[]) has a Big-Sur-onward regression: it raises ALL of
         // the app's windows (as if .activateAllWindows were always set) instead of just the main/key
@@ -201,8 +188,12 @@ final class PasteExecutor {
         }
 
         if let element = target.resolvedFocusedElement() {
-            AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+            focus(element)
         }
+    }
+
+    private func focus(_ element: AXUIElement) {
+        AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
     }
 
     /// Activate `pid`'s app for keyboard input while raising ONLY its frontmost window (not every window
@@ -231,7 +222,7 @@ final class PasteExecutor {
         guard isAttributeSettable(kAXSelectedTextAttribute as CFString, in: element) else {
             return .attributeUnsupported
         }
-        AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+        focus(element)
         return AXUIElementSetAttributeValue(
             element,
             kAXSelectedTextAttribute as CFString,
@@ -255,7 +246,7 @@ final class PasteExecutor {
             return .illegalArgument
         }
 
-        AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+        focus(element)
         let setValueResult = AXUIElementSetAttributeValue(
             element,
             kAXValueAttribute as CFString,
