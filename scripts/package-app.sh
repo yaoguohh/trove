@@ -104,20 +104,14 @@ else
   echo "warning: TROVE_SU_PUBLIC_KEY unset — SUPublicEDKey omitted. Run Sparkle's generate_keys and export it for release builds, or updates can't be EdDSA-verified." >&2
 fi
 
-# Resolve signing identity: Developer ID if available, else ad-hoc.
-if [[ -z "$SIGN_IDENTITY" ]]; then
-  SIGN_IDENTITY="$(
-    security find-identity -v -p codesigning 2>/dev/null \
-      | awk -F\" '/Apple Development|Developer ID Application|Mac Developer/ { print $2; exit }'
-  )"
-fi
+# Signing identity: ad-hoc unless TROVE_CODESIGN_IDENTITY names a certificate. Never pick one up from
+# the keychain implicitly — a build signed with a different identity than the release gets a different
+# designated requirement, so macOS drops its Accessibility grant (see RELEASE.md, Hard constraints).
 if [[ -n "$SIGN_IDENTITY" ]]; then
   SIGN_ID="$SIGN_IDENTITY"
   echo "Signing Trove with identity: $SIGN_ID" >&2
 else
   SIGN_ID="-"
-  echo "warning: no code signing identity found; using ad-hoc signing." >&2
-  echo "warning: set TROVE_CODESIGN_IDENTITY to a real certificate before notarized distribution." >&2
 fi
 
 # Sparkle adds nested code (framework + Updater.app + Autoupdate + XPC services). Sign it
