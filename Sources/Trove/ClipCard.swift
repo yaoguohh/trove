@@ -295,7 +295,7 @@ private struct ClipCardFooter: View {
                 .foregroundStyle(Theme.Text.t3)
                 .lineLimit(1)
                 .minimumScaleFactor(0.80)
-            Text("\(index + 1)")
+            Text(verbatim: "\(index + 1)")
                 .font(.system(size: metrics.footerSize, weight: .medium))
                 .foregroundStyle(Theme.Text.t3)
                 .lineLimit(1)

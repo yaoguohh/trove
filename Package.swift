@@ -20,17 +20,11 @@ let package = Package(
             name: "Trove",
             dependencies: [
                 .product(name: "Sparkle", package: "Sparkle")
-            ],
-            path: "Sources/Trove",
-            linkerSettings: [
-                .linkedFramework("AppKit"),
-                .linkedFramework("Carbon")
             ]
         ),
         .testTarget(
             name: "TroveTests",
-            dependencies: ["Trove"],
-            path: "Tests/TroveTests"
+            dependencies: ["Trove"]
         )
     ]
 )

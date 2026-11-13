@@ -117,7 +117,7 @@ struct StatusMenuView: View {
                         .foregroundStyle(Theme.Surface.coal)
                 )
             VStack(alignment: .leading, spacing: 1) {
-                Text("Trove").font(.system(size: 13.5, weight: .bold)).foregroundStyle(Theme.Text.t1)
+                Text(verbatim: "Trove").font(.system(size: 13.5, weight: .bold)).foregroundStyle(Theme.Text.t1)
                 Text(clipCount == 1
                      ? String(localized: "1 clip kept")
                      : String(format: String(localized: "%lld clips kept"), clipCount))
@@ -125,7 +125,7 @@ struct StatusMenuView: View {
                     .foregroundStyle(Theme.Text.t2)
             }
             Spacer()
-            Text("v\(version)")
+            Text(verbatim: "v\(version)")
                 .font(.system(size: 9.5, design: .monospaced))
                 .foregroundStyle(Theme.Text.t3)
         }

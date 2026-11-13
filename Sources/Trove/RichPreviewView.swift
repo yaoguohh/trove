@@ -93,9 +93,9 @@ struct BoundedPlainText: View {
             if isTruncated {
                 // The content itself was lost at the ceiling — paste won't be complete. Be honest
                 // (matches the card's "Truncated" chip) rather than promising full fidelity.
-                notice("This clip was too large and was shortened; pasting will not include the full content.")
+                notice(String(localized: "This clip was too large and was shortened; pasting will not include the full content."))
             } else if bounded.isClipped {
-                notice("Preview shortened for performance; copy or paste delivers the full content.")
+                notice(String(localized: "Preview shortened for performance; copy or paste delivers the full content."))
             }
             SelectableText(text: bounded.text)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -103,8 +103,8 @@ struct BoundedPlainText: View {
         .background(Theme.Surface.coal)
     }
 
-    private func notice(_ key: String.LocalizationValue) -> some View {
-        Text(String(localized: key))
+    private func notice(_ text: String) -> some View {
+        Text(text)
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(Theme.Text.t2)
             .frame(maxWidth: .infinity, alignment: .leading)

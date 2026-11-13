@@ -25,6 +25,9 @@ jobs:
         with:
           xcode-version: latest-stable
 
+      - name: Check localizations
+        run: bash scripts/check-localization.sh
+
       - name: Build
         run: swift build
 
