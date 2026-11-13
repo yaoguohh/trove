@@ -4,7 +4,7 @@ import Foundation
 /// plus any already-fetched `LinkMetadata`. Promoting the URL PATH — the part that actually differs
 /// between links to the same host — is what keeps two same-host clips from collapsing to identical
 /// "github.com / github.com" cards (the bug this type fixes). Kept SwiftUI-free so the parsing and
-/// formatting rules are exhaustively unit-testable (mirrors `RichPreviewRenderer`).
+/// formatting rules are exhaustively unit-testable (mirrors `InspectorRenderer`).
 struct LinkCardText: Equatable {
     /// Hero line: the fetched page title, else a smart path-tail, else the host (root URLs).
     let primary: String

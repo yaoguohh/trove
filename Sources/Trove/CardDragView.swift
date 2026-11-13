@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct CardDragSurface: NSViewRepresentable {
-    let item: ClipboardItem
+    let item: Clip
     @Environment(\.clipFiles) private var files
     let onClick: () -> Void
     let onDragStart: () -> Void
@@ -33,7 +33,7 @@ struct CardDragSurface: NSViewRepresentable {
 }
 
 final class CardDragView: NSView, NSDraggingSource {
-    var item: ClipboardItem?
+    var item: Clip?
     var files = ClipFiles.live
     var onClick: (() -> Void)?
     var onDragStart: (() -> Void)?
@@ -127,7 +127,7 @@ final class CardDragView: NSView, NSDraggingSource {
         draggingDidBegin = false
     }
 
-    private func pasteboardWriter(for item: ClipboardItem) -> NSPasteboardWriting {
+    private func pasteboardWriter(for item: Clip) -> NSPasteboardWriting {
         if item.kind == .image, let image = ImageCache.image(for: item, in: files) {
             return image
         }
@@ -139,7 +139,7 @@ final class CardDragView: NSView, NSDraggingSource {
         return full as NSString
     }
 
-    private func previewImage(for item: ClipboardItem, size: CGSize) -> NSImage {
+    private func previewImage(for item: Clip, size: CGSize) -> NSImage {
         if item.kind == .image, let image = ImageCache.thumbnail(for: item, in: files) {
             return image
         }

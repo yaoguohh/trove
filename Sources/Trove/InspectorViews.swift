@@ -1,10 +1,10 @@
 import AppKit
 import SwiftUI
 
-/// Rich, native, zero-dependency previews shown ONLY in the full inspect window (never per-card —
+/// Rich, native, zero-dependency previews shown ONLY in the full inspector (never per-card —
 /// cards keep the cheap capped `HighlightedText`). Each is a pure display layer over verbatim text.
 /// URLs are intentionally NOT rendered here: a single bare URL opens in the default browser instead
-/// (see `ClipboardPanelController.showPreview`), so there is no in-app web card.
+/// (see `PanelController.showInspector`), so there is no in-app web card.
 
 /// A read-only, natively selectable text view — an `NSTextView` in an `NSScrollView`. SwiftUI `Text`
 /// + `.textSelection(.enabled)` selects awkwardly inside a `ScrollView`; a real `NSTextView` gives
@@ -48,9 +48,9 @@ struct SelectableText: NSViewRepresentable {
 }
 
 /// A JSON clip pretty-printed (sorted keys, indented) in a monospaced, selectable view, with a
-/// Formatted / Raw Text toggle. The pretty string is precomputed by `RichPreviewRenderer.prettyJSON`
+/// Formatted / Raw Text toggle. The pretty string is precomputed by `InspectorRenderer.prettyJSON`
 /// (native `JSONSerialization`, validity- and size-gated).
-struct JSONPreviewView: View {
+struct JSONInspectorView: View {
     let formatted: String
     let raw: String
 
@@ -80,8 +80,8 @@ struct JSONPreviewView: View {
     }
 }
 
-/// Plain-text fallback: the full clip (up to the inspect window's layout guard), with a notice when
-/// clipped. The bounded body is resolved off the SwiftUI body (in `PreviewWindowController.show`) and
+/// Plain-text fallback: the full clip (up to the inspector's layout guard), with a notice when
+/// clipped. The bounded body is resolved off the SwiftUI body (in `InspectorController.show`) and
 /// passed in, so re-renders never re-read the sidecar. Selectable.
 struct BoundedPlainText: View {
     let bounded: (text: String, isClipped: Bool)

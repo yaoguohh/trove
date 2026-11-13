@@ -21,7 +21,7 @@ enum SourceAppIconProvider {
         }
     }
 
-    static func icon(for item: ClipboardItem) -> NSImage? {
+    static func icon(for item: Clip) -> NSImage? {
         let key = cacheKey(for: item)
         if let cached = iconCache[key] {
             return cached
@@ -47,11 +47,11 @@ enum SourceAppIconProvider {
         return preparedIcon
     }
 
-    static func accentColor(for item: ClipboardItem, fallback: Color) -> Color {
+    static func accentColor(for item: Clip, fallback: Color) -> Color {
         accentPalette(for: item, fallback: fallback).first ?? fallback
     }
 
-    static func accentPalette(for item: ClipboardItem, fallback: Color) -> [Color] {
+    static func accentPalette(for item: Clip, fallback: Color) -> [Color] {
         let key = cacheKey(for: item)
         if let cached = paletteCache[key] {
             return cached
@@ -68,7 +68,7 @@ enum SourceAppIconProvider {
         return palette
     }
 
-    private static func cacheKey(for item: ClipboardItem) -> String {
+    private static func cacheKey(for item: Clip) -> String {
         item.sourceBundleIdentifier ?? item.sourceAppPath ?? item.sourceApp
     }
 

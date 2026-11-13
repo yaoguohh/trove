@@ -1,9 +1,9 @@
 import Foundation
 
-/// What the inspect window should render a clip as. A PURE display classification over verbatim text
+/// What the inspector should render a clip as. A PURE display classification over verbatim text
 /// — never fed back into copy/paste/drag. Kept free of SwiftUI so the detection/formatting rules are
 /// exhaustively unit-testable (mirrors the PanelKeyboard pure-decision layer).
-enum RichPreviewContent: Equatable {
+enum InspectorContent: Equatable {
     case url(String)       // a single bare URL (the trimmed string)
     case json(String)      // the pretty-printed JSON
     case plain             // everything else — render as bounded plain text
@@ -11,17 +11,17 @@ enum RichPreviewContent: Equatable {
 
 /// What expanding a clip (clicking the peek bubble, or the card's right-click Preview) should
 /// do for a clip. A single bare URL opens in the default browser — rendering a web page inside a native
-/// card just duplicates the browser — while everything else opens the in-app inspect window.
+/// card just duplicates the browser — while everything else opens the in-app inspector.
 enum ExpandAction: Equatable {
     case openURL(URL)
     case inspectWindow
 }
 
-enum RichPreviewRenderer {
+enum InspectorRenderer {
     /// Decide what expanding a clip should do (pure, so the routing is unit-testable apart from the
     /// AppKit side effects). Only a single openable URL routes to the browser; multi-line `.link`-kind
-    /// clips, JSON, and plain text all fall back to the inspect window.
-    static func expandAction(for text: String, kind: ClipboardKind) -> ExpandAction {
+    /// clips, JSON, and plain text all fall back to the inspector.
+    static func expandAction(for text: String, kind: ClipKind) -> ExpandAction {
         if case .url(let link) = detect(text, kind: kind), let url = URL(string: link) {
             return .openURL(url)
         }
@@ -31,7 +31,7 @@ enum RichPreviewRenderer {
     /// Pretty-print valid JSON natively (zero dependencies). Gated three ways so it never does heavy
     /// work on non-JSON or oversized input: first char must be `{`/`[`, the UTF-8 size must be within
     /// `maxBytes`, and it must actually parse. Returns `nil` (→ render as plain) otherwise.
-    static func prettyJSON(_ text: String, maxBytes: Int = PreviewWindowController.previewWindowCap) -> String? {
+    static func prettyJSON(_ text: String, maxBytes: Int = InspectorController.textBudget) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let first = trimmed.first, first == "{" || first == "[" else { return nil }
         let data = Data(trimmed.utf8)
@@ -44,11 +44,11 @@ enum RichPreviewRenderer {
         return string
     }
 
-    /// Classify a clip for the inspect window. Detection runs on the BOUNDED inline `text`
+    /// Classify a clip for the inspector. Detection runs on the BOUNDED inline `text`
     /// (≤ inlineTextCap) so it's cheap; a JSON clip larger than that keeps its sidecar full text but
     /// renders as plain (its truncated inline prefix won't parse) — an accepted limitation.
-    static func detect(_ text: String, kind: ClipboardKind) -> RichPreviewContent {
-        if kind == .link, ClipboardItem.isSingleURL(text) {
+    static func detect(_ text: String, kind: ClipKind) -> InspectorContent {
+        if kind == .link, Clip.isSingleURL(text) {
             return .url(text.trimmingCharacters(in: .whitespacesAndNewlines))
         }
         if let pretty = prettyJSON(text) {

@@ -12,27 +12,27 @@ struct ClipFiles: Sendable, Equatable {
 
     var historyFile: URL { root.appendingPathComponent("history.json") }
     var imageDirectory: URL { root.appendingPathComponent("images", isDirectory: true) }
-    /// Full text of clips too large to keep inline in `history.json` (see `ClipboardItem.sidecarThreshold`).
+    /// Full text of clips too large to keep inline in `history.json` (see `Clip.sidecarThreshold`).
     var textDirectory: URL { root.appendingPathComponent("texts", isDirectory: true) }
 
-    func imageURL(for item: ClipboardItem) -> URL? {
+    func imageURL(for item: Clip) -> URL? {
         item.imageFileName.map { imageDirectory.appendingPathComponent($0) }
     }
 
-    func thumbnailURL(for item: ClipboardItem) -> URL? {
+    func thumbnailURL(for item: Clip) -> URL? {
         item.thumbnailFileName.map { imageDirectory.appendingPathComponent($0) }
     }
 
-    func textURL(for item: ClipboardItem) -> URL? {
+    func textURL(for item: Clip) -> URL? {
         item.textFileName.map { textDirectory.appendingPathComponent($0) }
     }
 
     /// The FULL verbatim text, for the consumers that must deliver complete content: copy, paste and
     /// drag-out. For an inline clip this is just `text` (no IO). For a spilled clip it does cached disk
     /// IO and degrades to the inline prefix if the sidecar is missing. MUST NOT be called from a
-    /// SwiftUI body or per-keystroke search — those use `text` / `preview` (the bounded inline prefix).
+    /// SwiftUI body or per-keystroke search — those use `text` / `excerpt` (the bounded inline prefix).
     @MainActor
-    func fullText(of item: ClipboardItem) -> String {
+    func fullText(of item: Clip) -> String {
         guard let url = textURL(for: item) else { return item.text }
         let key = url.path as NSString
         if let cached = Self.fullTextCache.object(forKey: key) { return cached as String }
@@ -56,7 +56,7 @@ struct ClipFiles: Sendable, Equatable {
 
     /// Deletes every file a clip owns (image, thumbnail, text sidecar). A small image's thumbnail IS
     /// the image, so the second remove is then a harmless no-op.
-    func removeFiles(of item: ClipboardItem) {
+    func removeFiles(of item: Clip) {
         for url in [imageURL(for: item), thumbnailURL(for: item), textURL(for: item)].compactMap({ $0 }) {
             try? FileManager.default.removeItem(at: url)
         }

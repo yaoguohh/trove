@@ -2,21 +2,21 @@ import AppKit
 import SwiftUI
 
 /// What the panel content can ask its window to do. Each is one operation owned by
-/// `ClipboardPanelController`, shared with its keyboard path.
+/// `PanelController`, shared with its keyboard path.
 struct PanelActions {
-    let paste: (ClipboardItem) -> Void
-    let copy: (ClipboardItem) -> Void
-    let preview: (ClipboardItem) -> Void
+    let paste: (Clip) -> Void
+    let copy: (Clip) -> Void
+    let inspect: (Clip) -> Void
     let close: () -> Void
     let reopen: () -> Void
 }
 
-struct ClipboardPanelView: View {
-    @ObservedObject var store: ClipboardStore
+struct PanelView: View {
+    @ObservedObject var store: ClipStore
     @ObservedObject var model: PanelViewModel
     let actions: PanelActions
 
-    @State private var hoveredID: ClipboardItem.ID?
+    @State private var hoveredID: Clip.ID?
     @State private var suppressHoverScroll = false
     // Last real pointer location (global). Hover only moves the selection when this changes, so a
     // card scrolling under a stationary pointer can't hijack the keyboard selection.
@@ -32,7 +32,7 @@ struct ClipboardPanelView: View {
     // Shared height for every toolbar item so they share one vertical center / equal top margin.
     private static let toolbarItemHeight: CGFloat = 36
 
-    private var filteredItems: [ClipboardItem] { model.filteredItems }
+    private var filteredItems: [Clip] { model.filteredItems }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -43,7 +43,7 @@ struct ClipboardPanelView: View {
         // Tern's popIn on the CONTENT only (Motion.scale + a 4pt rise); the glass window behind it only
         // fades (`NSWindow.fadeIn`).
         .popIn(trigger: model.showToken, nudge: 4)
-        .frame(minWidth: ClipboardPanelController.minimumSize.width, minHeight: ClipboardPanelController.minimumSize.height)
+        .frame(minWidth: PanelController.minimumSize.width, minHeight: PanelController.minimumSize.height)
         .background {
             // Theme.Radius.panel, the same radius as the glass mask behind it.
             // No fill tint: the chrome is the material alone plus an l2 hairline and a one-pixel
@@ -136,9 +136,9 @@ struct ClipboardPanelView: View {
     private var moreActionsMenu: some View {
         Menu {
             Picker(selection: $model.filter.kind) {
-                Text("All").tag(nil as ClipboardKind?)
-                ForEach(ClipboardKind.allCases) { kind in
-                    Label(kind.title, systemImage: kind.symbolName).tag(kind as ClipboardKind?)
+                Text("All").tag(nil as ClipKind?)
+                ForEach(ClipKind.allCases) { kind in
+                    Label(kind.title, systemImage: kind.symbolName).tag(kind as ClipKind?)
                 }
             } label: {
                 Text("Type")
@@ -315,7 +315,7 @@ struct ClipboardPanelView: View {
     }
 
     @ViewBuilder
-    private func clipMenu(for item: ClipboardItem) -> some View {
+    private func clipMenu(for item: Clip) -> some View {
         // Clicking the card / Return pastes; the menu offers copy + organize. Text clips are stored as
         // plain text only, so there is no separate "paste as plain text".
         Button {
@@ -324,9 +324,9 @@ struct ClipboardPanelView: View {
             Label("Copy", systemImage: "doc.on.doc")
         }
 
-        // Open a full-size, content-adaptive preview window (panel stays open for comparison).
+        // Open the inspector, a full-size content-adaptive window (panel stays open for comparison).
         Button {
-            actions.preview(item)
+            actions.inspect(item)
         } label: {
             Label("Preview", systemImage: "eye.square")
         }
@@ -372,7 +372,7 @@ struct ClipboardPanelView: View {
 
     // MARK: - Inline title rename
 
-    private func startRename(_ item: ClipboardItem) {
+    private func startRename(_ item: Clip) {
         renameDraft = item.title ?? ""
         // Render the editor (renamingItemID drives its visibility), then move the single focus
         // authority onto it. External assignment is more reliable than the cell focusing itself.
@@ -380,7 +380,7 @@ struct ClipboardPanelView: View {
         focus = .rename(item.id)
     }
 
-    private func commitRename(_ item: ClipboardItem) {
+    private func commitRename(_ item: Clip) {
         guard model.renamingItemID == item.id else { return }
         let name = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         store.rename(item, to: name.isEmpty ? nil : name)
@@ -396,7 +396,7 @@ struct ClipboardPanelView: View {
     }
 
     /// Commit the rename for a given id when focus leaves its editor (blur-commit).
-    private func commitRenameByID(_ id: ClipboardItem.ID) {
+    private func commitRenameByID(_ id: Clip.ID) {
         if let item = filteredItems.first(where: { $0.id == id }) {
             commitRename(item)
         } else {
@@ -406,7 +406,7 @@ struct ClipboardPanelView: View {
 
     /// Hover affordance: a square.and.pencil button in the header (left of the source icon),
     /// vertically centered in the gradient bar.
-    private func renamePencil(for item: ClipboardItem, metrics: CardMetrics) -> some View {
+    private func renamePencil(for item: Clip, metrics: CardMetrics) -> some View {
         Button {
             startRename(item)
         } label: {
@@ -427,7 +427,7 @@ struct ClipboardPanelView: View {
     /// A 1:1 snapshot of the on-screen card, used as the drag preview so the floating image
     /// matches exactly (gradient header, source icon, body, footer, rounded corners).
     @MainActor
-    private func dragImage(for item: ClipboardItem, index: Int, metrics: CardMetrics) -> NSImage? {
+    private func dragImage(for item: Clip, index: Int, metrics: CardMetrics) -> NSImage? {
         let card = ClipCard(
             item: item,
             index: index,
@@ -445,7 +445,7 @@ struct ClipboardPanelView: View {
         return renderer.nsImage
     }
 
-    private func pinboard(for item: ClipboardItem) -> Pinboard? {
+    private func pinboard(for item: Clip) -> Pinboard? {
         guard let id = item.pinboardID else { return nil }
         return store.pinboards.first { $0.id == id }
     }

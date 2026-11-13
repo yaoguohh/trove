@@ -2,7 +2,7 @@ import SwiftUI
 import Testing
 @testable import Trove
 
-/// Deterministic, dependency-free regression guard for the Quick Look bubble outline — the shape we
+/// Deterministic, dependency-free regression guard for the peek bubble outline — the shape we
 /// iterated on the most (seam, size, the Dock-style ogee tail). Asserts the *geometry* of the path
 /// (tail at bottom-center, rounded top corners, tip reaching the bottom edge) rather than pixels, so
 /// it's CI-safe and not environment-sensitive.

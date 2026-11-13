@@ -8,7 +8,7 @@ import SwiftUI
 /// translucency would bleed the desktop through transparent image regions and tint the
 /// content, which defeats faithful inspection.
 @MainActor
-final class PreviewWindowController: NSObject, NSWindowDelegate {
+final class InspectorController: NSObject, NSWindowDelegate {
     /// Open windows are retained here (not via `isReleasedWhenClosed`) so multiple previews can
     /// coexist; each is dropped on `windowWillClose`.
     private var windows: Set<NSWindow> = []
@@ -18,20 +18,20 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
         self.files = files
     }
 
-    /// UTF-8 byte budget for anything the inspect window lays out in full — the plain-text
+    /// UTF-8 byte budget for anything the inspector lays out in full — the plain-text
     /// `ScrollView` (SwiftUI `Text` has no viewport virtualization) and JSON pretty-printing. The
     /// window shows the clip up to this guard and a notice beyond it; copy/paste still deliver the
     /// complete content.
-    nonisolated static let previewWindowCap = 256 * 1024
+    nonisolated static let textBudget = 256 * 1024
 
-    /// Bound the inspect-window text to `previewWindowCap` UTF-8 bytes, returning whether it was
+    /// Bound the inspect-window text to `textBudget` UTF-8 bytes, returning whether it was
     /// clipped (so the view can show a notice). Truly O(cap): for a spilled clip it reads at most
-    /// `previewWindowCap + 1` bytes from the sidecar via `FileHandle` — it never materializes the whole
+    /// `textBudget + 1` bytes from the sidecar via `FileHandle` — it never materializes the whole
     /// (up-to-ceiling) clip just to show the first 256KB. Resolve this ONCE on the explicit open action
     /// (`show`), never inside a SwiftUI body. A spilled clip whose sidecar is missing degrades to its
     /// inline prefix.
-    static func boundedBody(for item: ClipboardItem, in files: ClipFiles) -> (text: String, isClipped: Bool) {
-        let budget = previewWindowCap
+    static func boundedBody(for item: Clip, in files: ClipFiles) -> (text: String, isClipped: Bool) {
+        let budget = textBudget
         let head: Data
         let hasMore: Bool
         if let url = files.textURL(for: item), let handle = try? FileHandle(forReadingFrom: url) {
@@ -52,13 +52,13 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
         return (text, hasMore)
     }
 
-    func show(_ item: ClipboardItem, near screen: NSScreen?) {
+    func show(_ item: Clip, near screen: NSScreen?) {
         let image: NSImage? = item.kind == .image ? ImageCache.image(for: item, in: files) : nil
         let visible = NSScreen.preferring(screen)?.visibleFrame
             ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let size = Self.contentSize(for: item, image: image, in: visible)
 
-        let window = PreviewWindow(
+        let window = InspectorWindow(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
@@ -81,7 +81,7 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
         // sidecar read happens once off the SwiftUI body (which can re-evaluate many times). Only the
         // plain-text branch needs it; image/link/json branches ignore it.
         let plainBody = item.kind == .image ? nil : Self.boundedBody(for: item, in: files)
-        let hosting = NSHostingController(rootView: ClipPreviewView(item: item, image: image, plainBody: plainBody))
+        let hosting = NSHostingController(rootView: InspectorView(item: item, image: image, plainBody: plainBody))
         // Drop `.intrinsicContentSize` so a `maxWidth/Height: .infinity` root fills the window
         // instead of collapsing to its intrinsic size (the frame-less-Form blank-window pitfall).
         hosting.sizingOptions = [.minSize]
@@ -119,7 +119,7 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
     /// Image: aspect-preserving fit to a fraction of the screen, never upscaled past 1:1 (a tiny
     /// favicon shouldn't blow up to fullscreen), with a small floor so it's never a sliver.
     /// Text: a comfortable reading column with a sensible default height; content scrolls.
-    private static func contentSize(for item: ClipboardItem, image: NSImage?, in visible: NSRect) -> NSSize {
+    private static func contentSize(for item: Clip, image: NSImage?, in visible: NSRect) -> NSSize {
         if let image, image.size.width > 0, image.size.height > 0 {
             let fitted = ImageFit.size(
                 of: image.size,
@@ -133,11 +133,11 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
         return NSSize(width: width.rounded(), height: height.rounded())
     }
 
-    private static func title(for item: ClipboardItem) -> String {
+    private static func title(for item: Clip) -> String {
         String(item.displayTitle.prefix(60))
     }
 
-    /// Flip a preview window between a normal, Mission-Control-visible window and a floating,
+    /// Flip an inspector window between a normal, Mission-Control-visible window and a floating,
     /// always-on-top one. Set BOTH level and collectionBehavior every time — AppKit derives a
     /// default behavior from the level, so flipping only the level would silently revert
     /// Mission-Control visibility.
@@ -149,11 +149,11 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
     }
 }
 
-/// The inspect window. Trove has no main menu, so nothing supplies the usual File/Edit key
+/// The inspector. Trove has no main menu, so nothing supplies the usual File/Edit key
 /// equivalents: Esc and ⌘W close it here, and ⌘C/⌘A route into the selectable text via
 /// `EditingShortcuts`. The panel's key monitor bails when the panel isn't key, so Esc reaches this
 /// window instead of dismissing the panel.
-private final class PreviewWindow: NSWindow {
+private final class InspectorWindow: NSWindow {
     /// Esc → close (the standard cancel action), unless a subview claimed the key first.
     override func cancelOperation(_ sender: Any?) {
         performClose(sender)
@@ -170,8 +170,8 @@ private final class PreviewWindow: NSWindow {
     }
 }
 
-private struct ClipPreviewView: View {
-    let item: ClipboardItem
+private struct InspectorView: View {
+    let item: Clip
     let image: NSImage?
     /// Bounded plain-text body, resolved once in `show()` (off the body). Nil for image items.
     let plainBody: (text: String, isClipped: Bool)?
@@ -196,12 +196,12 @@ private struct ClipPreviewView: View {
         } else {
             // Detection runs on the bounded inline `text` (cheap); each branch is a pure display
             // layer. Rich previews live ONLY here, never per-card.
-            switch RichPreviewRenderer.detect(item.text, kind: item.kind) {
+            switch InspectorRenderer.detect(item.text, kind: item.kind) {
             case .json(let pretty):
-                JSONPreviewView(formatted: pretty, raw: item.text)
+                JSONInspectorView(formatted: pretty, raw: item.text)
             case .url, .plain:
                 // A single URL opens in the default browser before this window is ever shown (see
-                // ClipboardPanelController.showPreview); the `.url` case here is a defensive fallback
+                // PanelController.showInspector); the `.url` case here is a defensive fallback
                 // that renders the raw URL as plain text rather than a native web card.
                 BoundedPlainText(bounded: plainBody ?? (item.text, false), isTruncated: item.isTruncated)
             }
@@ -210,7 +210,7 @@ private struct ClipPreviewView: View {
 
 }
 
-/// The Keep-on-Top toggle hosted in the preview window's titlebar (trailing accessory). Owns its
+/// The Keep-on-Top toggle hosted in the inspector's titlebar (trailing accessory). Owns its
 /// pinned state and calls back to flip the window's level/collectionBehavior.
 private struct PinTitlebarButton: View {
     let apply: (Bool) -> Void

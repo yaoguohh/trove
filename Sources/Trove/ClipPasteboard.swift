@@ -6,14 +6,14 @@ import AppKit
 @MainActor
 final class ClipPasteboard {
     private let pasteboard: NSPasteboard
-    private let store: ClipboardStore
+    private let store: ClipStore
     private let monitor: ClipboardMonitor
     /// Keeps the lazy TIFF provider alive while Trove's image owns the pasteboard.
     private var imageOwner: ImagePasteboardOwner?
     private var pasteTarget: PasteTargetSnapshot?
 
     /// `pasteboard` is injectable so tests can drive a private named pasteboard.
-    init(store: ClipboardStore, monitor: ClipboardMonitor, pasteboard: NSPasteboard = .general) {
+    init(store: ClipStore, monitor: ClipboardMonitor, pasteboard: NSPasteboard = .general) {
         self.store = store
         self.monitor = monitor
         self.pasteboard = pasteboard
@@ -25,7 +25,7 @@ final class ClipPasteboard {
         pasteTarget = PasteTargetSnapshot.capture(excluding: AppInfo.bundleIdentifier)
     }
 
-    func copy(_ item: ClipboardItem) {
+    func copy(_ item: Clip) {
         pasteboard.clearContents()
         if item.kind == .image, let url = store.files.imageURL(for: item), let png = try? Data(contentsOf: url) {
             // The stored PNG bytes go back verbatim: no decode, no TIFF→PNG round trip. The owner
@@ -43,7 +43,7 @@ final class ClipPasteboard {
 
     /// Copy, then deliver into the remembered target. The single path for every paste from the
     /// panel (Return, click).
-    func paste(_ item: ClipboardItem) {
+    func paste(_ item: Clip) {
         let target = pasteTarget
         pasteTarget = nil
         copy(item)

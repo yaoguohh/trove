@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-enum ClipboardKind: String, Codable, CaseIterable, Identifiable {
+enum ClipKind: String, Codable, CaseIterable, Identifiable {
     case text
     case link
     case code
@@ -45,7 +45,7 @@ struct Pinboard: Identifiable, Codable, Equatable, Sendable {
     }
 }
 
-struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
+struct Clip: Identifiable, Codable, Equatable, Sendable {
     var id: UUID
     var text: String
     var sourceApp: String
@@ -57,7 +57,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
     var thumbnailFileName: String?
     var createdAt: Date
     var isPinned: Bool
-    var kind: ClipboardKind
+    var kind: ClipKind
     var pinboardID: UUID?
     var title: String?
     var characterCount: Int
@@ -77,17 +77,18 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
     /// clips, where `characterCount` is also the original length so the footer stays honest).
     var originalCharacterCount: Int
 
-    /// Upper bound on the number of characters `preview` derives from the full text. A card only
-    /// shows a handful of lines, so capping the SOURCE keeps `preview` (and everything downstream of
-    /// it — card body, `displayTitle`, the drag image, the preview-window title) O(cap) instead of
+    /// Upper bound on the number of characters `excerpt` derives from the full text. A card only
+    /// shows a handful of lines, so capping the SOURCE keeps `excerpt` (and everything downstream of
+    /// it — card body, `displayTitle`, the drag image, the inspector title) O(cap) instead of
     /// O(full text); without it every re-render would build a newline-replaced copy of a multi-MB clip.
-    static let displayPreviewCap = 8_000
+    static let excerptCap = 8_000
 
-    var preview: String {
-        // Take the prefix BEFORE the O(n) transforms so the work is bounded by `displayPreviewCap`,
-        // not by the (possibly multi-MB) full text. `prefix(_:)` walks at most `displayPreviewCap`
+    /// The one-line excerpt a card shows: newlines flattened, surrounding whitespace trimmed.
+    var excerpt: String {
+        // Take the prefix BEFORE the O(n) transforms so the work is bounded by `excerptCap`,
+        // not by the (possibly multi-MB) full text. `prefix(_:)` walks at most `excerptCap`
         // characters; the copy then happens only on that already-bounded substring.
-        text.prefix(Self.displayPreviewCap)
+        text.prefix(Self.excerptCap)
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -99,11 +100,11 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
         return kind.title
     }
 
-    /// The best one-line label: the custom title, else the content preview, else the kind label. Used
+    /// The best one-line label: the custom title, else the excerpt, else the kind label. Used
     /// where the card itself isn't visible — window titles, the drag placeholder.
     var displayTitle: String {
         if let title, !title.isEmpty { return title }
-        return preview.isEmpty ? kind.title : preview
+        return excerpt.isEmpty ? kind.title : excerpt
     }
 
     // MARK: - Storage cap (hybrid sidecar)
@@ -139,7 +140,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
         imageFileName: String? = nil,
         createdAt: Date = Date(),
         isPinned: Bool = false,
-        kind: ClipboardKind = .text,
+        kind: ClipKind = .text,
         pinboardID: UUID? = nil,
         title: String? = nil,
         contentHash: String? = nil
@@ -157,7 +158,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
         self.pinboardID = pinboardID
         self.title = title
         self.characterCount = kind == .image ? 0 : text.count
-        // Sidecar spill + truncation are decided and applied by ClipboardStore (the only place that
+        // Sidecar spill + truncation are decided and applied by ClipStore (the only place that
         // also writes the sidecar file); the model defaults to "fully inline, not truncated" and the
         // store mutates these on the constructed value when it spills/ceilings the text.
         self.textFileName = nil
@@ -179,7 +180,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
         isPinned = try container.decode(Bool.self, forKey: .isPinned)
         // A kind this version doesn't know (a removed case, or one from a newer version) is
         // re-detected rather than failing the whole document.
-        kind = ClipboardKind(rawValue: try container.decode(String.self, forKey: .kind))
+        kind = ClipKind(rawValue: try container.decode(String.self, forKey: .kind))
             ?? Self.detectKind(for: text)
         pinboardID = try container.decodeIfPresent(UUID.self, forKey: .pinboardID)
         title = try container.decodeIfPresent(String.self, forKey: .title)
@@ -212,7 +213,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
 
     /// A clip is a link only if it is one bare http(s) URL — no interior whitespace or newline, so a
     /// paragraph that merely starts with a link is text. Bounded so it stays cheap on huge input.
-    /// The single definition of "link" for kind detection, capture and the inspect window.
+    /// The single definition of "link" for kind detection, capture and the inspector.
     static func isSingleURL(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.count <= 4_000 else { return false }
@@ -221,7 +222,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
         return URL(string: trimmed) != nil
     }
 
-    static func detectKind(for text: String) -> ClipboardKind {
+    static func detectKind(for text: String) -> ClipKind {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if isSingleURL(trimmed) {
             return .link

@@ -4,10 +4,10 @@ import Testing
 
 @MainActor
 struct ClipboardMonitorTests {
-    private func makeStore() -> ClipboardStore {
+    private func makeStore() -> ClipStore {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("TroveTests-\(UUID().uuidString)", isDirectory: true)
-        return ClipboardStore(files: ClipFiles(root: root))
+        return ClipStore(files: ClipFiles(root: root))
     }
 
     private func write(_ text: String, to pasteboard: NSPasteboard, extraTypes: [NSPasteboard.PasteboardType] = []) {

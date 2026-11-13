@@ -15,7 +15,7 @@ struct PanelKeyEventTests {
         chars: String? = nil,
         queryEmpty: Bool = true,
         hasSelection: Bool = true,
-        quickLook: Bool = false,
+        peek: Bool = false,
         canUndo: Bool = false
     ) -> PanelKeyIntent? {
         guard let decoded = PanelKeyEvent.decode(keyCode: keyCode, modifierRaw: mods.rawValue, characters: chars) else {
@@ -27,7 +27,7 @@ struct PanelKeyEventTests {
             state: PanelInputState(
                 queryIsEmpty: queryEmpty,
                 hasSelection: hasSelection,
-                quickLookVisible: quickLook,
+                peekVisible: peek,
                 canUndoDelete: canUndo
             )
         )
@@ -76,8 +76,8 @@ struct PanelKeyEventTests {
         #expect(intent(KeyCode.keypadEnter) == .paste)
     }
 
-    @Test func spaceTogglesQuickLookWithSelection() {
-        #expect(intent(KeyCode.space, hasSelection: true) == .toggleQuickLook)
+    @Test func spaceTogglesPeekWithSelection() {
+        #expect(intent(KeyCode.space, hasSelection: true) == .togglePeek)
     }
 
     @Test func spaceTypesWithoutSelection() {

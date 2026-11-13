@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// The toolbar's row of pinboard chips plus the "+" button, with home-screen-style drag-to-reorder.
-/// Owns all of the reorder gesture state so `ClipboardPanelView` stays about the timeline.
+/// Owns all of the reorder gesture state so `PanelView` stays about the timeline.
 struct PinboardStrip: View {
-    @ObservedObject var store: ClipboardStore
+    @ObservedObject var store: ClipStore
     @ObservedObject var model: PanelViewModel
     /// Gap between chips (the toolbar's spacing, so the strip reads as part of the toolbar row).
     let spacing: CGFloat

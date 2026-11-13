@@ -1,6 +1,6 @@
 import AppKit
 
-/// The main panel's window class and glass backdrop, kept apart from `ClipboardPanelController`
+/// The main panel's window class and glass backdrop, kept apart from `PanelController`
 /// (which is about showing, hiding and routing keys).
 enum PanelChrome {
     /// A clear container holding the dense dark glass behind `content`, both pinned edge-to-edge.
@@ -57,7 +57,7 @@ enum PanelChrome {
 
 /// A borderless panel that can still become key so the hosted SwiftUI search field receives text;
 /// navigation/action keys are intercepted by the controller's window-level event monitor.
-final class TrovePanel: KeyablePanel {
+final class PanelWindow: KeyablePanel {
     override var canBecomeMain: Bool { true }
 
     // No main-menu Edit menu (menu-bar app), so route ⌘C/⌘X/⌘V/⌘A into the search field here. Only a

@@ -1,16 +1,16 @@
 import Foundation
 
 /// The panel's scope chips: an optional kind and an optional pinboard (nil = everything).
-struct ClipboardSearchFilter: Equatable {
-    var kind: ClipboardKind?
+struct ClipFilter: Equatable {
+    var kind: ClipKind?
     var pinboardID: UUID?
 }
 
 @MainActor
-final class ClipboardStore: ObservableObject {
+final class ClipStore: ObservableObject {
     /// Display order is an invariant: pinned first, then newest first. Every mutation re-establishes
     /// it (`sortForPins`), so readers — `ClipSearch`, the panel — never sort.
-    @Published private(set) var items: [ClipboardItem] = []
+    @Published private(set) var items: [Clip] = []
     @Published private(set) var pinboards: [Pinboard] = []
 
     /// History cap for unpinned clips (`AppSettings.maxItems`); pinned clips never age out.
@@ -31,7 +31,7 @@ final class ClipboardStore: ObservableObject {
     /// memory. `delete` DEFERS removing a clip's sidecar/image files to here: they're removed only when
     /// the clip is evicted past the cap (so until then an undo can restore it byte-for-byte); the
     /// launch-time orphan sweep is the backstop for anything an abrupt quit strands.
-    private var deletedUndoStack: [ClipboardItem] = []
+    private var deletedUndoStack: [Clip] = []
     private let maxUndoDepth = 25
 
     /// Whether there's a deleted card to restore — drives the panel's ⌘Z gating.
@@ -65,7 +65,7 @@ final class ClipboardStore: ObservableObject {
         guard !normalized.isEmpty else { return }
 
         // Spilling to a sidecar is decided on the same normalized length the identity is built from.
-        let identity = ClipboardItem.textIdentity(normalized)
+        let identity = Clip.textIdentity(normalized)
 
         // Build the next array locally and publish ONCE: every `items` assignment re-runs the
         // panel's search over the whole history, so an add must not publish three times.
@@ -86,7 +86,7 @@ final class ClipboardStore: ObservableObject {
                 sourceBundleIdentifier: sourceBundleIdentifier,
                 sourceAppPath: sourceAppPath,
                 contentHash: identity,
-                spills: normalized.count > ClipboardItem.sidecarThreshold
+                spills: normalized.count > Clip.sidecarThreshold
             )
             next.insert(item, at: 0)
         }
@@ -117,22 +117,22 @@ final class ClipboardStore: ObservableObject {
         sourceAppPath: String?,
         contentHash: String,
         spills: Bool
-    ) -> ClipboardItem {
+    ) -> Clip {
         var storedText = text
         var truncated = false
-        if text.count > ClipboardItem.ultimateSidecarCeiling {
-            storedText = String(text.prefix(ClipboardItem.ultimateSidecarCeiling))
+        if text.count > Clip.ultimateSidecarCeiling {
+            storedText = String(text.prefix(Clip.ultimateSidecarCeiling))
             truncated = true
         }
 
-        var item = ClipboardItem(
+        var item = Clip(
             text: storedText,
             sourceApp: sourceApp,
             sourceBundleIdentifier: sourceBundleIdentifier,
             sourceAppPath: sourceAppPath,
             // Kind is display-only (icon/label); detect from a bounded prefix so a multi-MB paste
             // doesn't scan the whole string several times on the main-thread ingestion path.
-            kind: ClipboardItem.detectKind(for: String(storedText.prefix(ClipboardItem.displayPreviewCap))),
+            kind: Clip.detectKind(for: String(storedText.prefix(Clip.excerptCap))),
             contentHash: contentHash
         )
         if truncated {
@@ -152,7 +152,7 @@ final class ClipboardStore: ObservableObject {
             // the launch-time orphan sweep), never a dangling reference. The cost is a one-time O(n)
             // write proportional to clip size, on a deliberate copy of unusual (>20k-char) content.
             item.textFileName = try files.writeText(storedText, for: item.id)
-            item.text = String(storedText.prefix(ClipboardItem.inlineTextCap))
+            item.text = String(storedText.prefix(Clip.inlineTextCap))
         } catch {
             // Fall back to full inline so paste fidelity is never silently lost.
             Log.store.error("text sidecar save failed: \(error.localizedDescription, privacy: .public)")
@@ -179,7 +179,7 @@ final class ClipboardStore: ObservableObject {
         addPreparedImage(
             id: id,
             files: stored,
-            contentHash: ClipboardItem.hash(data),
+            contentHash: Clip.hash(data),
             sourceApp: sourceApp,
             sourceBundleIdentifier: sourceBundleIdentifier,
             sourceAppPath: sourceAppPath,
@@ -200,7 +200,7 @@ final class ClipboardStore: ObservableObject {
         sourceAppPath: String?,
         createdAt: Date
     ) {
-        var item = ClipboardItem(
+        var item = Clip(
             id: id,
             text: "",
             sourceApp: sourceApp,
@@ -288,7 +288,7 @@ final class ClipboardStore: ObservableObject {
         Log.images.notice("backfilled \(resolved.count) image thumbnails")
     }
 
-    func togglePin(_ item: ClipboardItem) {
+    func togglePin(_ item: Clip) {
         guard let index = index(of: item) else { return }
         items[index].isPinned.toggle()
         if !items[index].isPinned {
@@ -298,7 +298,7 @@ final class ClipboardStore: ObservableObject {
         scheduleSave()
     }
 
-    func delete(_ item: ClipboardItem) {
+    func delete(_ item: Clip) {
         guard let index = index(of: item) else { return }
         // Capture the store's canonical copy and push it to the undo stack. Its sidecar/image files are
         // intentionally NOT removed here — `pushUndo` removes them only on eviction, so ⌘Z can restore
@@ -310,7 +310,7 @@ final class ClipboardStore: ObservableObject {
 
     /// Push a just-deleted clip onto the bounded undo stack, removing the files of anything evicted
     /// past the cap (the removal `delete` deferred). Eviction is the point of no return for a delete.
-    private func pushUndo(_ item: ClipboardItem) {
+    private func pushUndo(_ item: Clip) {
         deletedUndoStack.append(item)
         while deletedUndoStack.count > maxUndoDepth {
             files.removeFiles(of: deletedUndoStack.removeFirst())
@@ -328,7 +328,7 @@ final class ClipboardStore: ObservableObject {
     /// are then removed cleanly). Pin a recovered clip to keep it; rewriting `createdAt` to dodge this
     /// would lie about when the clip was copied, which the card's relative-time display relies on.
     @discardableResult
-    func undoDelete() -> ClipboardItem? {
+    func undoDelete() -> Clip? {
         guard var item = deletedUndoStack.popLast() else { return nil }
 
         // The clip carried its pin state onto the stack; if its pinboard was deleted while it sat there,
@@ -354,7 +354,7 @@ final class ClipboardStore: ObservableObject {
         return item
     }
 
-    func move(_ item: ClipboardItem, to pinboard: Pinboard?) {
+    func move(_ item: Clip, to pinboard: Pinboard?) {
         guard let index = index(of: item) else { return }
         items[index].pinboardID = pinboard?.id
         items[index].isPinned = pinboard != nil
@@ -364,7 +364,7 @@ final class ClipboardStore: ObservableObject {
 
     /// Set or clear a clip's custom display name (shown in the card header; also searchable). An
     /// empty/nil name reverts the card to its kind label.
-    func rename(_ item: ClipboardItem, to title: String?) {
+    func rename(_ item: Clip, to title: String?) {
         guard let index = index(of: item) else { return }
         items[index].title = title
         scheduleSave()
@@ -414,11 +414,11 @@ final class ClipboardStore: ObservableObject {
         writer.flush(currentDocument())
     }
 
-    private func index(of item: ClipboardItem) -> Int? {
+    private func index(of item: Clip) -> Int? {
         items.firstIndex { $0.id == item.id }
     }
 
-    nonisolated private static func sorted(_ items: [ClipboardItem]) -> [ClipboardItem] {
+    nonisolated private static func sorted(_ items: [Clip]) -> [Clip] {
         items.sorted {
             if $0.isPinned != $1.isPinned {
                 return $0.isPinned && !$1.isPinned
@@ -432,7 +432,7 @@ final class ClipboardStore: ObservableObject {
     }
 
     /// Trim to the cap, restore display order and publish `items` exactly once, then persist.
-    private func commit(_ next: [ClipboardItem]) {
+    private func commit(_ next: [Clip]) {
         let pinned = next.filter(\.isPinned)
         let unpinned = next.filter { !$0.isPinned }
         let keepCount = max(0, maxItems - pinned.count)

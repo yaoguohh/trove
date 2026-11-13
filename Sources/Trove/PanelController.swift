@@ -3,11 +3,11 @@ import QuartzCore
 import SwiftUI
 
 @MainActor
-final class ClipboardPanelController {
-    private let store: ClipboardStore
+final class PanelController {
+    private let store: ClipStore
     private let pasteboard: ClipPasteboard
     private var panel: NSPanel?
-    private var hostingController: NSHostingController<ClipboardPanelView?>?
+    private var hostingController: NSHostingController<PanelView?>?
     // App-lifetime observer (the controller is held by AppDelegate for the whole run), so it never
     // needs explicit removal; the [weak self] closure keeps it from retaining the controller.
     private var appActivationObserver: NSObjectProtocol?
@@ -18,8 +18,8 @@ final class ClipboardPanelController {
     // (and dismissal) never depend on the search field still holding SwiftUI focus.
     private var keyMonitor: Any?
     private let model: PanelViewModel
-    private lazy var previewController = PreviewWindowController(files: store.files)
-    private lazy var quickLook = QuickLookBubbleController(files: store.files)
+    private lazy var inspector = InspectorController(files: store.files)
+    private lazy var peek = PeekController(files: store.files)
     /// True while the animated fade-out is in flight, so a second dismissal can't re-arm its
     /// completion and order out a panel the user just re-summoned.
     private var isHiding = false
@@ -36,14 +36,14 @@ final class ClipboardPanelController {
         panel?.isVisible == true
     }
 
-    init(store: ClipboardStore, pasteboard: ClipPasteboard) {
+    init(store: ClipStore, pasteboard: ClipPasteboard) {
         self.store = store
         self.pasteboard = pasteboard
         self.model = PanelViewModel(store: store)
         // The Space peek is one-shot: it shows the card selected at the moment Space was pressed.
         // ANY later selection change (←/→ navigation or hover) dismisses it instead of letting the
         // bubble follow — a bubble that tracks fast navigation is disorienting.
-        self.model.onSelectionChange = { [weak self] in self?.quickLook.hide() }
+        self.model.onSelectionChange = { [weak self] in self?.peek.hide() }
     }
 
     func show() {
@@ -61,7 +61,7 @@ final class ClipboardPanelController {
         position(panel)
         // The panel is a `.nonactivatingPanel`, so it becomes the KEY window and receives keyboard
         // WITHOUT activating Trove or stealing the frontmost app's active status — the idiomatic
-        // launcher pattern (the same one our QuickLook bubble uses). We deliberately do NOT call
+        // launcher pattern (the same one our peek bubble uses). We deliberately do NOT call
         // `NSApp.activate`: on macOS 14+ activation is only a cooperative request, and NOT stealing
         // activation means the app the user was in (the paste target) stays frontmost, so dismissing
         // the panel returns the user there cleanly. A key
@@ -75,7 +75,7 @@ final class ClipboardPanelController {
         panel.orderFrontRegardless()
         panel.makeKey()
         installClickAwayMonitor()
-        // The content pops in on top of the fading window — ClipboardPanelView.popIn.
+        // The content pops in on top of the fading window — PanelView.popIn.
         panel.fadeIn()
         // Fresh state on every (re)show. The SwiftUI view focuses the search field (on showToken) so
         // typing filters immediately; navigation/action keys route through the window-level monitor.
@@ -88,7 +88,7 @@ final class ClipboardPanelController {
     func hide(animated: Bool = false) {
         // Any panel dismissal (paste, Esc, hotkey, focus loss, drag) also dismisses the peek bubble
         // — a single chokepoint so the bubble can never outlive the panel.
-        quickLook.hide()
+        peek.hide()
         removeClickAwayMonitor()
         guard let panel, panel.isVisible, animated else {
             visibilityGeneration += 1
@@ -132,14 +132,14 @@ final class ClipboardPanelController {
         })
     }
 
-    private func makeContent() -> ClipboardPanelView {
-        ClipboardPanelView(
+    private func makeContent() -> PanelView {
+        PanelView(
             store: store,
             model: model,
             actions: PanelActions(
                 paste: { [weak self] item in self?.paste(item) },
                 copy: { [weak self] item in self?.copy(item) },
-                preview: { [weak self] item in self?.showPreview(item) },
+                inspect: { [weak self] item in self?.showInspector(item) },
                 close: { [weak self] in self?.hide() },
                 reopen: { [weak self] in self?.show() }
             )
@@ -149,7 +149,7 @@ final class ClipboardPanelController {
     private func createPanel() {
         let hosting = ClickThroughHostingController(rootView: Optional(makeContent()))
         hostingController = hosting
-        let panel = TrovePanel(
+        let panel = PanelWindow(
             // `.nonactivatingPanel` lets the borderless panel become key and take keyboard input without
             // activating Trove (a background accessory) or stealing the frontmost app's active status —
             // the launcher-standard summon. The flag is only honored at init, so it must be set here.
@@ -187,7 +187,7 @@ final class ClipboardPanelController {
         // make Trove the active app — so a `didResignActive` observer would never fire (Trove was never
         // active) and the panel would linger when the user Cmd-Tabs / Spotlights / opens another app. Instead, watch for ANOTHER app becoming active: didActivateApplication covers
         // Cmd-Tab, Spotlight, app launches, and clicking another app. We IGNORE activations of Trove
-        // itself, so opening our own preview window (which calls NSApp.activate) keeps the panel open
+        // itself, so opening our own inspector (which calls NSApp.activate) keeps the panel open
         // beneath it for side-by-side comparison. `hidesOnDeactivate` stays false on purpose so this
         // animated, monitor-cleaning hide() runs instead of AppKit's abrupt orderOut.
         appActivationObserver = NSWorkspace.shared.notificationCenter.addObserver(
@@ -312,14 +312,14 @@ final class ClipboardPanelController {
             state: PanelInputState(
                 queryIsEmpty: model.query.isEmpty,
                 hasSelection: model.selectedItem != nil,
-                quickLookVisible: quickLook.isVisible,
+                peekVisible: peek.isVisible,
                 canUndoDelete: store.canUndoDelete
             )
         ) {
         case .passThrough:
             return false
-        case .dismissQuickLook:
-            quickLook.hide()
+        case .dismissPeek:
+            peek.hide()
         case .closePanel:
             hide(animated: true)
         case .clearQuery:
@@ -334,10 +334,10 @@ final class ClipboardPanelController {
             if let item = model.selectedItem { model.delete(item) }
         case .undoDelete:
             model.undoDelete()
-        case .toggleQuickLook:
-            // The bubble's expand button hands off to the full standalone preview window.
-            quickLook.onExpand = { [weak self] item in self?.showPreview(item) }
-            quickLook.toggle(model: model, over: panel)
+        case .togglePeek:
+            // Clicking the bubble hands off to the inspector.
+            peek.onExpand = { [weak self] item in self?.showInspector(item) }
+            peek.toggle(model: model, over: panel)
         }
         return true
     }
@@ -352,12 +352,12 @@ final class ClipboardPanelController {
     }
 
     /// Hide first (instantly), then paste into the remembered target.
-    private func paste(_ item: ClipboardItem) {
+    private func paste(_ item: Clip) {
         hide()
         pasteboard.paste(item)
     }
 
-    private func copy(_ item: ClipboardItem) {
+    private func copy(_ item: Clip) {
         pasteboard.copy(item)
         hide()
     }
@@ -374,14 +374,14 @@ final class ClipboardPanelController {
     }
 
     /// Expand the item. A single bare URL opens in the default browser (a native card just duplicates
-    /// the browser); everything else opens a standalone, content-adaptive inspect window. The panel
-    /// stays open (floating beneath the preview) so the user can keep comparing items.
-    private func showPreview(_ item: ClipboardItem) {
-        switch RichPreviewRenderer.expandAction(for: item.text, kind: item.kind) {
+    /// the browser); everything else opens a standalone, content-adaptive inspector. The panel
+    /// stays open (floating beneath the inspector) so the user can keep comparing items.
+    private func showInspector(_ item: Clip) {
+        switch InspectorRenderer.expandAction(for: item.text, kind: item.kind) {
         case .openURL(let url):
             NSWorkspace.shared.open(url)
         case .inspectWindow:
-            previewController.show(item, near: panel?.screen)
+            inspector.show(item, near: panel?.screen)
         }
     }
 }

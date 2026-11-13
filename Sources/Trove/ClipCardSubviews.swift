@@ -1,7 +1,7 @@
 import SwiftUI
 
-struct ImagePreview: View {
-    let item: ClipboardItem
+struct ImageCardBody: View {
+    let item: Clip
     @Environment(\.clipFiles) private var files
 
     var body: some View {
@@ -23,7 +23,7 @@ struct ImagePreview: View {
     }
 }
 
-/// What every image surface (card, peek, inspect window) shows when the clip's file is gone.
+/// What every image surface (card, peek, inspector) shows when the clip's file is gone.
 struct ImageUnavailableView: View {
     let symbolSize: CGFloat
     let textSize: CGFloat
@@ -40,8 +40,8 @@ struct ImageUnavailableView: View {
     }
 }
 
-struct LinkPreview: View {
-    let item: ClipboardItem
+struct LinkCardBody: View {
+    let item: Clip
     let accent: Color
     let searchQuery: String
     let metrics: CardMetrics
@@ -153,9 +153,9 @@ struct HighlightedText: View {
     }
 
     private var attributedText: AttributedString {
-        // Card bodies are already `item.preview` (capped), but link titles and hosts arrive here too;
+        // Card bodies are already `item.excerpt` (capped), but link titles and hosts arrive here too;
         // the same cap keeps building the attributed copy O(cap) for any input.
-        let capped = String(text.prefix(ClipboardItem.displayPreviewCap))
+        let capped = String(text.prefix(Clip.excerptCap))
         var attributed = AttributedString(capped)
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !needle.isEmpty else { return attributed }
@@ -179,7 +179,7 @@ struct HighlightedText: View {
 }
 
 struct SourceIcon: View {
-    let item: ClipboardItem
+    let item: Clip
     let style: SourceAppStyle
     let size: CGFloat
 

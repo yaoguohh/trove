@@ -4,20 +4,20 @@ import Combine
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settings = AppSettings.shared
-    private lazy var store = ClipboardStore(maxItems: settings.maxItems)
+    private lazy var store = ClipStore(maxItems: settings.maxItems)
     private var monitor: ClipboardMonitor?
     private var clipPasteboard: ClipPasteboard?
     private var hotKeyManager: HotKeyManager?
     private var statusItem: NSStatusItem?
     private var statusMenu: StatusMenuController?
-    private var panelController: ClipboardPanelController?
+    private var panelController: PanelController?
     private var updaterController: UpdaterController?
     private var settingsObservers: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Dark-only by design: the panel is a Dock/HUD-class floating surface, and every color in the
         // app is a single anthracite token (see Theme). Pinning the appearance app-wide keeps the
-        // inspect window, menus and alerts on the same side.
+        // inspector, menus and alerts on the same side.
         NSApp.appearance = NSAppearance(named: .darkAqua)
         let clipboardMonitor = ClipboardMonitor(store: store)
         monitor = clipboardMonitor
@@ -26,7 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let pasteboard = ClipPasteboard(store: store, monitor: clipboardMonitor)
         clipPasteboard = pasteboard
 
-        panelController = ClipboardPanelController(store: store, pasteboard: pasteboard)
+        panelController = PanelController(store: store, pasteboard: pasteboard)
         let hotKeys = HotKeyManager { [weak self] in
             self?.togglePanel()
         }
@@ -54,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureMenuBar()
 
         // Image clips stored before thumbnails existed get theirs generated once, off-main, after the
-        // launch path has settled. TODO(v1.5): remove with `ClipboardStore.backfillThumbnails`.
+        // launch path has settled. TODO(v1.5): remove with `ClipStore.backfillThumbnails`.
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
             self?.store.backfillThumbnails()
         }

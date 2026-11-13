@@ -6,7 +6,7 @@ import AppKit
 /// Two tiers, because they have different lifetimes:
 /// - `thumbnails` backs the cards. Thumbnails are small (`ImageIngest.thumbnailMaxPixelSize`), so even a full strip
 ///   of image cards decodes to a few MB; this tier survives hide/show so re-summoning is instant.
-/// - `fullImages` backs the peek bubble, the inspect window and drag-out. A single 4K screenshot
+/// - `fullImages` backs the peek bubble, the inspector and drag-out. A single 4K screenshot
 ///   decodes to 33 MB, so this tier is purged whenever the panel hides — the footprint of a
 ///   background clipboard manager should not include every screenshot the user looked at.
 ///
@@ -20,15 +20,15 @@ enum ImageCache {
 
     /// The card-sized rendition: the item's thumbnail, else (legacy items awaiting backfill, or a
     /// failed thumbnail) the original.
-    static func thumbnail(for item: ClipboardItem, in files: ClipFiles) -> NSImage? {
+    static func thumbnail(for item: Clip, in files: ClipFiles) -> NSImage? {
         if let url = files.thumbnailURL(for: item) {
             return cached(url, in: thumbnails)
         }
         return image(for: item, in: files)
     }
 
-    /// The full-resolution image (peek, inspect window, drag-out).
-    static func image(for item: ClipboardItem, in files: ClipFiles) -> NSImage? {
+    /// The full-resolution image (peek, inspector, drag-out).
+    static func image(for item: Clip, in files: ClipFiles) -> NSImage? {
         files.imageURL(for: item).flatMap { cached($0, in: fullImages) }
     }
 

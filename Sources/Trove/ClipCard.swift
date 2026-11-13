@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ClipCard: View {
-    let item: ClipboardItem
+    let item: Clip
     let index: Int
     let pinboard: Pinboard?
     let isSelected: Bool
@@ -69,7 +69,7 @@ struct ClipCard: View {
 
     /// What VoiceOver reads for the card: name/kind, source app, then the content excerpt.
     private var accessibilityDescription: String {
-        let excerpt = item.kind == .image ? "" : String(item.preview.prefix(200))
+        let excerpt = item.kind == .image ? "" : String(item.excerpt.prefix(200))
         let head = "\(item.name), \(sourceStyle.displayName)"
         return excerpt.isEmpty ? head : "\(head): \(excerpt)"
     }
@@ -77,11 +77,11 @@ struct ClipCard: View {
     private var cardBody: some View {
         VStack(alignment: .leading, spacing: 10) {
             if item.kind == .image {
-                ImagePreview(item: item)
+                ImageCardBody(item: item)
             } else if item.kind == .link {
-                LinkPreview(item: item, accent: accentColor, searchQuery: searchQuery, metrics: metrics)
+                LinkCardBody(item: item, accent: accentColor, searchQuery: searchQuery, metrics: metrics)
             } else {
-                HighlightedText(text: item.preview, query: searchQuery)
+                HighlightedText(text: item.excerpt, query: searchQuery)
                     .font(.system(size: metrics.bodySize, weight: .medium))
                     .foregroundStyle(Theme.Text.t1)
                     .lineLimit(contentLineLimit)
@@ -162,7 +162,7 @@ private struct ClipCardChrome<Header: View, Content: View, Footer: View>: View {
 }
 
 private struct ClipCardHeader: View {
-    let item: ClipboardItem
+    let item: Clip
     let sourceStyle: SourceAppStyle
     let accentPalette: [Color]
     let metrics: CardMetrics

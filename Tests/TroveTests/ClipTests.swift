@@ -3,34 +3,34 @@ import Carbon
 import Testing
 @testable import Trove
 
-struct ClipboardKindDetectionTests {
+struct ClipKindDetectionTests {
     @Test func detectsLinks() {
-        #expect(ClipboardItem.detectKind(for: "https://example.com/path") == .link)
-        #expect(ClipboardItem.detectKind(for: "  http://example.com  ") == .link)
+        #expect(Clip.detectKind(for: "https://example.com/path") == .link)
+        #expect(Clip.detectKind(for: "  http://example.com  ") == .link)
     }
 
     @Test func detectsEmails() {
-        #expect(ClipboardItem.detectKind(for: "person@example.com") == .email)
-        #expect(ClipboardItem.detectKind(for: "first.last@sub.example.co") == .email)
+        #expect(Clip.detectKind(for: "person@example.com") == .email)
+        #expect(Clip.detectKind(for: "first.last@sub.example.co") == .email)
     }
 
     @Test func detectsCodeByBracesOrKeywords() {
-        #expect(ClipboardItem.detectKind(for: "func greet() { print(\"hi\") }") == .code)
-        #expect(ClipboardItem.detectKind(for: "import Foundation") == .code)
-        #expect(ClipboardItem.detectKind(for: "class Foo {}") == .code)
+        #expect(Clip.detectKind(for: "func greet() { print(\"hi\") }") == .code)
+        #expect(Clip.detectKind(for: "import Foundation") == .code)
+        #expect(Clip.detectKind(for: "class Foo {}") == .code)
     }
 
     @Test func fallsBackToPlainText() {
-        #expect(ClipboardItem.detectKind(for: "just some words") == .text)
-        #expect(ClipboardItem.detectKind(for: "not-an-email@") == .text)
+        #expect(Clip.detectKind(for: "just some words") == .text)
+        #expect(Clip.detectKind(for: "not-an-email@") == .text)
     }
 }
 
-struct ClipboardItemKindTests {
+struct ClipKindTests {
     @Test func onlyASingleBareURLIsALink() {
-        #expect(ClipboardItem.detectKind(for: "  https://example.com/a  ") == .link)
-        #expect(ClipboardItem.detectKind(for: "https://example.com then some words") == .text)
-        #expect(ClipboardItem.detectKind(for: "https://a.com\nhttps://b.com") == .text)
+        #expect(Clip.detectKind(for: "  https://example.com/a  ") == .link)
+        #expect(Clip.detectKind(for: "https://example.com then some words") == .text)
+        #expect(Clip.detectKind(for: "https://a.com\nhttps://b.com") == .text)
     }
 
     @Test func unknownOrStaleKindsAreRedetectedOnDecode() throws {
@@ -38,7 +38,7 @@ struct ClipboardItemKindTests {
         [{"id":"\(UUID().uuidString)","text":"plain words","sourceApp":"X","createdAt":0,"isPinned":false,"kind":"file","characterCount":0,"isTruncated":false,"originalCharacterCount":0},\
         {"id":"\(UUID().uuidString)","text":"https://x.com and more","sourceApp":"X","createdAt":0,"isPinned":false,"kind":"link","characterCount":0,"isTruncated":false,"originalCharacterCount":0}]
         """
-        let items = try JSONDecoder().decode([ClipboardItem].self, from: Data(json.utf8))
+        let items = try JSONDecoder().decode([Clip].self, from: Data(json.utf8))
         #expect(items.map(\.kind) == [.text, .text])
     }
 }
@@ -80,10 +80,10 @@ struct ImageFitTests {
     }
 }
 
-struct ClipboardItemNameTests {
+struct ClipNameTests {
     @Test func nameIsTheCustomTitleElseTheKind() {
-        var item = ClipboardItem(text: "some words", sourceApp: "X")
-        #expect(item.name == ClipboardKind.text.title)
+        var item = Clip(text: "some words", sourceApp: "X")
+        #expect(item.name == ClipKind.text.title)
         #expect(item.displayTitle == "some words")
         item.title = "Renamed"
         #expect(item.name == "Renamed")

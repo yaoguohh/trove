@@ -7,7 +7,7 @@ import SwiftUI
 /// observer (dismiss on ⌘-Tab / focus loss).
 @MainActor
 final class StatusMenuController {
-    private let store: ClipboardStore
+    private let store: ClipStore
     private let settings: AppSettings
     private let updater: UpdaterController
     private let hotKeys: HotKeyManager
@@ -21,7 +21,7 @@ final class StatusMenuController {
     private var lastClosed: Date?
 
     init(
-        store: ClipboardStore,
+        store: ClipStore,
         settings: AppSettings,
         updater: UpdaterController,
         hotKeys: HotKeyManager,

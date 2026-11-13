@@ -5,7 +5,7 @@ import SwiftUI
 /// (the canonical SwiftUI fix for focus cross-talk between the search field and a rename editor).
 enum PanelFocus: Hashable {
     case search
-    case rename(ClipboardItem.ID)
+    case rename(Clip.ID)
 }
 
 /// What a keystroke should DO in the panel, decided purely from the key + modifiers + a snapshot of
@@ -21,8 +21,8 @@ enum PanelKeyIntent: Equatable {
     case paste                 // Return / keypad Enter : paste the selected card
     case deleteSelectedCard    // ⌦ or ⌘⌫
     case undoDelete            // ⌘Z : restore the most recently deleted card
-    case toggleQuickLook       // Space over a selected card with an empty search
-    case dismissQuickLook      // Esc while the peek bubble is open
+    case togglePeek       // Space over a selected card with an empty search
+    case dismissPeek      // Esc while the peek bubble is open
     case clearQuery            // Esc with a non-empty search
     case closePanel            // Esc with an empty search
 }
@@ -32,7 +32,7 @@ enum PanelKeyIntent: Equatable {
 struct PanelInputState: Equatable {
     var queryIsEmpty: Bool
     var hasSelection: Bool
-    var quickLookVisible: Bool
+    var peekVisible: Bool
     /// Whether the store has a deleted card to restore. Card-undo fires on ⌘Z only when this is true
     /// AND `queryIsEmpty` — so while the user is editing search text, ⌘Z passes through to the field's
     /// native text-undo instead of resurrecting a card.
@@ -46,7 +46,7 @@ enum PanelKeyboard {
 
         // Esc: dismiss the peek first, then clear a non-empty search, then close.
         if key == .escape, mods.isEmpty {
-            if state.quickLookVisible { return .dismissQuickLook }
+            if state.peekVisible { return .dismissPeek }
             return state.queryIsEmpty ? .closePanel : .clearQuery
         }
 
@@ -83,7 +83,7 @@ enum PanelKeyboard {
             // Peek the selected card. IME composition is handled UPSTREAM (the controller bails on
             // marked text), so a Space that commits a candidate never reaches here. With nothing
             // selected (empty results) the space just types.
-            return state.hasSelection ? .toggleQuickLook : .passThrough
+            return state.hasSelection ? .togglePeek : .passThrough
         default:
             return .passThrough                               // printable keys, ⌫, etc. edit the search
         }

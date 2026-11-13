@@ -9,12 +9,12 @@ final class ClipboardMonitor {
     static let pollInterval: TimeInterval = 0.5
 
     private let pasteboard: NSPasteboard
-    private let store: ClipboardStore
+    private let store: ClipStore
     private var lastChangeCount: Int
     private var timer: Timer?
 
     /// `pasteboard` is injectable so tests can drive a private named pasteboard.
-    init(store: ClipboardStore, pasteboard: NSPasteboard = .general) {
+    init(store: ClipStore, pasteboard: NSPasteboard = .general) {
         self.store = store
         self.pasteboard = pasteboard
         lastChangeCount = pasteboard.changeCount
@@ -102,7 +102,7 @@ final class ClipboardMonitor {
                 Log.images.error("pasteboard image could not be decoded; dropped")
                 return
             }
-            let contentHash = ClipboardItem.hash(png)
+            let contentHash = Clip.hash(png)
             let files: ImageIngest.StoredFiles
             do {
                 files = try ImageIngest.writeFiles(id: id, png: png, directory: directory)

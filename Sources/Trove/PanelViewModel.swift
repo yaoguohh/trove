@@ -11,10 +11,10 @@ final class PanelViewModel: ObservableObject {
     @Published var query = "" {
         didSet { if query != oldValue { refilter(); selectFirst() } }
     }
-    @Published var filter = ClipboardSearchFilter() {
+    @Published var filter = ClipFilter() {
         didSet { if filter != oldValue { refilter(); selectFirst() } }
     }
-    @Published var selectedID: ClipboardItem.ID? {
+    @Published var selectedID: Clip.ID? {
         didSet {
             guard selectedID != oldValue else { return }
             onSelectionChange?()
@@ -24,7 +24,7 @@ final class PanelViewModel: ObservableObject {
     /// inside a view body. The panel reads it several times per render, and `ClipSearch` scans up to
     /// 20k characters per item, so a computed property here cost ~50ms × reads per keystroke at a
     /// full history.
-    @Published private(set) var filteredItems: [ClipboardItem] = []
+    @Published private(set) var filteredItems: [Clip] = []
     /// Called (on the main actor) whenever the selection changes from any source — keyboard, hover,
     /// or programmatic. The controller uses it to close the peek bubble, which never follows a change.
     var onSelectionChange: (() -> Void)?
@@ -37,14 +37,14 @@ final class PanelViewModel: ObservableObject {
     @Published private(set) var refocusToken = 0
     /// The card whose title is being renamed inline (nil = not renaming). Drives the rename editor's
     /// visibility; the actual keyboard focus is the view's single PanelFocus authority.
-    @Published var renamingItemID: ClipboardItem.ID?
+    @Published var renamingItemID: Clip.ID?
 
-    let store: ClipboardStore
+    let store: ClipStore
     private var itemsSubscription: AnyCancellable?
 
-    init(store: ClipboardStore) {
+    init(store: ClipStore) {
         self.store = store
-        filteredItems = ClipSearch.filter(store.items, query: "", filter: ClipboardSearchFilter())
+        filteredItems = ClipSearch.filter(store.items, query: "", filter: ClipFilter())
         // `$items` emits the NEW array (willSet semantics), so filter the published value rather than
         // `store.items`, which still holds the old one at that moment.
         itemsSubscription = store.$items.sink { [weak self] items in
@@ -52,12 +52,12 @@ final class PanelViewModel: ObservableObject {
         }
     }
 
-    private func refilter(items: [ClipboardItem]? = nil) {
+    private func refilter(items: [Clip]? = nil) {
         filteredItems = ClipSearch.filter(items ?? store.items, query: query, filter: filter)
     }
 
     /// The card a paste/Return acts on: the explicit selection, else the top result.
-    var selectedItem: ClipboardItem? {
+    var selectedItem: Clip? {
         if let selectedID, let item = filteredItems.first(where: { $0.id == selectedID }) {
             return item
         }
@@ -68,7 +68,7 @@ final class PanelViewModel: ObservableObject {
     /// pre-highlighted (so the ring always shows what Return will paste).
     func prepareForShow() {
         query = ""
-        filter = ClipboardSearchFilter()
+        filter = ClipFilter()
         renamingItemID = nil
         selectFirst()
         showToken &+= 1
@@ -96,12 +96,12 @@ final class PanelViewModel: ObservableObject {
     /// Back to the full, unfiltered history.
     func resetFilters() {
         query = ""
-        filter = ClipboardSearchFilter()
+        filter = ClipFilter()
     }
 
     /// Delete a card and select the neighbor now at the same position, so repeated deletes keep the
     /// user's place. Deleting can make SwiftUI drop the search field's focus, so it is re-claimed.
-    func delete(_ item: ClipboardItem) {
+    func delete(_ item: Clip) {
         let index = filteredItems.firstIndex { $0.id == item.id } ?? 0
         store.delete(item)
         let remaining = filteredItems

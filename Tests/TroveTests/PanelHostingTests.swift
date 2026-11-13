@@ -23,8 +23,8 @@ struct PanelHostingTests {
         controller.show()
         #expect(controller.isVisible)
         #expect(hosting.rootView != nil)
-        #expect((hosting.window?.frame.width ?? 0) >= ClipboardPanelController.minimumSize.width)
-        #expect((hosting.window?.frame.height ?? 0) >= ClipboardPanelController.minimumSize.height)
+        #expect((hosting.window?.frame.width ?? 0) >= PanelController.minimumSize.width)
+        #expect((hosting.window?.frame.height ?? 0) >= PanelController.minimumSize.height)
         // SwiftUI hands the search field focus a few run-loop turns after the show; a fixed 100ms was
         // enough locally and flaky on a loaded CI runner, so wait for the condition instead.
         #expect(await eventually { hosting.window?.firstResponder is NSTextView })
@@ -60,16 +60,16 @@ struct PanelHostingTests {
         return condition()
     }
 
-    private func hostingView() -> NSHostingView<ClipboardPanelView?>? {
+    private func hostingView() -> NSHostingView<PanelView?>? {
         NSApplication.shared.windows.filter(\.isVisible)
             .flatMap { $0.contentView?.subviews ?? [] }
-            .compactMap { $0 as? NSHostingView<ClipboardPanelView?> }.first
+            .compactMap { $0 as? NSHostingView<PanelView?> }.first
     }
 
-    private func makePanel() -> (ClipboardPanelController, URL) {
+    private func makePanel() -> (PanelController, URL) {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("TrovePanelTests-\(UUID().uuidString)")
-        let store = ClipboardStore(files: ClipFiles(root: directory))
+            .appendingPathComponent("PanelWindowTests-\(UUID().uuidString)")
+        let store = ClipStore(files: ClipFiles(root: directory))
         store.add(text: "Panel lifecycle fixture", sourceApp: "Test")
         let pasteboard = NSPasteboard.withUniqueName()
         let clipPasteboard = ClipPasteboard(
@@ -77,6 +77,6 @@ struct PanelHostingTests {
             monitor: ClipboardMonitor(store: store, pasteboard: pasteboard),
             pasteboard: pasteboard
         )
-        return (ClipboardPanelController(store: store, pasteboard: clipPasteboard), directory)
+        return (PanelController(store: store, pasteboard: clipPasteboard), directory)
     }
 }

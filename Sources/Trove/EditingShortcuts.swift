@@ -8,11 +8,11 @@ import AppKit
 /// pop up over the spotlight-style panel whenever it's summoned. Without that menu there's no built-in
 /// routing for these shortcuts, so each window forwards them to the responder chain itself via
 /// `performKeyEquivalent`. This is the standard escape hatch for menu-bar-only apps, kept in ONE place
-/// so the inspect window, the search field, and any future text surface all behave identically.
+/// so the inspector, the search field, and any future text surface all behave identically.
 enum EditingShortcuts {
     /// The standard editing action a plain-⌘ letter maps to, or nil if it isn't one of them. Pure and
     /// table-driven so the mapping is unit-testable apart from the live responder dispatch. ⌘Z is
-    /// intentionally absent: the panel already routes it to card-undo, and the inspect window is
+    /// intentionally absent: the panel already routes it to card-undo, and the inspector is
     /// read-only.
     static func actionName(forKey key: String) -> String? {
         switch key.lowercased() {

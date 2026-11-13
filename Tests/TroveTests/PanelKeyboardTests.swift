@@ -9,7 +9,7 @@ private func decide(
     _ modifiers: EventModifiers = [],
     queryEmpty: Bool = true,
     hasSelection: Bool = true,
-    quickLook: Bool = false,
+    peek: Bool = false,
     canUndo: Bool = false
 ) -> PanelKeyIntent {
     PanelKeyboard.intent(
@@ -18,7 +18,7 @@ private func decide(
         state: PanelInputState(
             queryIsEmpty: queryEmpty,
             hasSelection: hasSelection,
-            quickLookVisible: quickLook,
+            peekVisible: peek,
             canUndoDelete: canUndo
         )
     )
@@ -26,7 +26,7 @@ private func decide(
 
 struct PanelKeyboardEscapeTests {
     @Test func dismissesPeekFirst() {
-        #expect(decide(.escape, queryEmpty: false, quickLook: true) == .dismissQuickLook)
+        #expect(decide(.escape, queryEmpty: false, peek: true) == .dismissPeek)
     }
     @Test func closesWhenQueryEmpty() {
         #expect(decide(.escape) == .closePanel)
@@ -86,8 +86,8 @@ struct PanelKeyboardDeleteTests {
 struct PanelKeyboardSpaceTests {
     @Test func spacePeeksWheneverSomethingIsSelected() {
         // Peek works regardless of the search query (IME composition is filtered out upstream).
-        #expect(decide(.space, queryEmpty: true, hasSelection: true) == .toggleQuickLook)
-        #expect(decide(.space, queryEmpty: false, hasSelection: true) == .toggleQuickLook)
+        #expect(decide(.space, queryEmpty: true, hasSelection: true) == .togglePeek)
+        #expect(decide(.space, queryEmpty: false, hasSelection: true) == .togglePeek)
     }
     @Test func spaceTypesWhenNothingSelected() {
         #expect(decide(.space, hasSelection: false) == .passThrough)

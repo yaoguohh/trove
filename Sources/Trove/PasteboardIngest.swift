@@ -78,7 +78,7 @@ enum PasteboardIngest {
     static func isIncidentalText(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !trimmed.contains(where: { $0 == "\n" || $0 == " " }) else { return false }
-        return ClipboardItem.isSingleURL(trimmed) || trimmed.hasPrefix("file://")
+        return Clip.isSingleURL(trimmed) || trimmed.hasPrefix("file://")
     }
 }
 

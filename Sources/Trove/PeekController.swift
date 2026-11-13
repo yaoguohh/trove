@@ -6,16 +6,16 @@ import SwiftUI
 /// showing the item at a glance (image scaled to fit, or a text excerpt). It floats in its own
 /// borderless, NON-activating panel: clicking it doesn't make it key, so the main panel keeps focus
 /// (the search field and the controller's key monitor keep working while the bubble is up). A click
-/// anywhere on the bubble hands off to the full-size inspect window (PreviewWindowController).
+/// anywhere on the bubble hands off to the full-size inspector (InspectorController).
 @MainActor
-final class QuickLookBubbleController {
+final class PeekController {
     private let files: ClipFiles
     private var window: NSPanel?
     /// Bumped on every present so the (persistent) bubble view replays its popIn.
-    private let popState = BubblePopState()
-    /// Invoked when the bubble is clicked — opens the full standalone preview for the peeked item.
-    /// Wired by ClipboardPanelController.
-    var onExpand: ((ClipboardItem) -> Void)?
+    private let popState = PeekPopState()
+    /// Invoked when the bubble is clicked — opens the inspector for the peeked item.
+    /// Wired by PanelController.
+    var onExpand: ((Clip) -> Void)?
 
     /// Transparent margin baked into the window around the bubble so the drop shadow (drawn in
     /// SwiftUI, following the bubble+tail outline) has room to render instead of being clipped.
@@ -23,7 +23,7 @@ final class QuickLookBubbleController {
     /// Height of the downward tail (the "小角") at the bubble's bottom-center. Kept small and soft
     /// so it reads as a gentle pointer, not a chunky triangle.
     static let tailHeight: CGFloat = 8
-    /// Padding between the bubble's edge and its content. Shared with QuickLookBubbleView so the
+    /// Padding between the bubble's edge and its content. Shared with PeekView so the
     /// computed window size and the rendered content stay in lockstep.
     static let contentInset: CGFloat = 14
     /// Gap between the tail tip and the panel's top edge.
@@ -33,7 +33,7 @@ final class QuickLookBubbleController {
         self.files = files
     }
     /// Max characters the peek bubble measures and renders. The bubble is a transient glance — the
-    /// full content lives in the inspect window — so capping both the `boundingRect` measure and the
+    /// full content lives in the inspector — so capping both the `boundingRect` measure and the
     /// `Text` layout keeps a multi-MB clip from being laid out just to peek at its first lines.
     static let bubbleTextCap = 4_000
 
@@ -52,8 +52,8 @@ final class QuickLookBubbleController {
         window?.orderOut(nil)
     }
 
-    /// The bubble was clicked: dismiss the peek and hand off to the full preview window.
-    private func expandTapped(_ item: ClipboardItem) {
+    /// The bubble was clicked: dismiss the peek and hand off to the inspector.
+    private func expandTapped(_ item: Clip) {
         let action = onExpand
         hide()
         action?(item)
@@ -70,14 +70,14 @@ final class QuickLookBubbleController {
         window.alphaValue = 0
         window.orderFront(nil)
         // Tern's popIn: the window fades while the bubble content scales up and rises 3pt — see
-        // QuickLookBubbleView.
+        // PeekView.
         popState.generation &+= 1
         window.fadeIn()
     }
 
     private func createWindow(model: PanelViewModel) {
         let hosting = NSHostingController(
-            rootView: QuickLookBubbleView(model: model, pop: popState, expand: { [weak self] item in
+            rootView: PeekView(model: model, pop: popState, expand: { [weak self] item in
                 self?.expandTapped(item)
             })
             .environment(\.clipFiles, files)
@@ -110,7 +110,7 @@ final class QuickLookBubbleController {
 
     /// Center the bubble horizontally on the panel with its tail tip sitting just above the panel's
     /// top edge; size it adaptively to the space ABOVE the panel and clamp to the screen.
-    private func frame(for item: ClipboardItem, over panel: NSWindow) -> NSRect {
+    private func frame(for item: Clip, over panel: NSWindow) -> NSRect {
         let margin = Self.shadowMargin
         let panelFrame = panel.frame
         let visible = panel.screen?.visibleFrame ?? panelFrame
@@ -140,8 +140,8 @@ final class QuickLookBubbleController {
 
     /// Snug size of the bubble body (including the tail), excluding the shadow margin. Scales the
     /// content up to the given caps (images aspect-fit, never upscaled past 1:1); mirrors the
-    /// padding used in `QuickLookBubbleView` so the rendered content fills it exactly.
-    static func bubbleSize(for item: ClipboardItem, files: ClipFiles, maxContentW: CGFloat, maxContentH: CGFloat) -> NSSize {
+    /// padding used in `PeekView` so the rendered content fills it exactly.
+    static func bubbleSize(for item: Clip, files: ClipFiles, maxContentW: CGFloat, maxContentH: CGFloat) -> NSSize {
         let inset = contentInset
         func wrap(_ w: CGFloat, _ h: CGFloat) -> NSSize {
             NSSize(width: w + inset * 2, height: h + inset * 2 + tailHeight)
@@ -157,7 +157,7 @@ final class QuickLookBubbleController {
                 return wrap(fitted.width, fitted.height)
             }
             // Image kind but the backing file is gone → size for the "Image unavailable" placeholder
-            // (rendered in QuickLookBubbleView), not for the empty text, so it isn't clipped.
+            // (rendered in PeekView), not for the empty text, so it isn't clipped.
             return wrap(min(180, maxContentW), min(72, maxContentH))
         }
 
@@ -175,17 +175,17 @@ final class QuickLookBubbleController {
 
 /// Presentation counter the controller bumps on each show so the bubble view replays its entrance.
 @MainActor
-final class BubblePopState: ObservableObject {
+final class PeekPopState: ObservableObject {
     @Published var generation = 0
 }
 
 /// The bubble's SwiftUI content: the selected clip in a rounded card with a tail. The controller
 /// closes the bubble on any selection change, so it only ever shows the card it was opened on.
-private struct QuickLookBubbleView: View {
+private struct PeekView: View {
     @Environment(\.clipFiles) private var files
     @ObservedObject var model: PanelViewModel
-    @ObservedObject var pop: BubblePopState
-    let expand: (ClipboardItem) -> Void
+    @ObservedObject var pop: PeekPopState
+    let expand: (Clip) -> Void
 
     var body: some View {
         Group {
@@ -197,26 +197,26 @@ private struct QuickLookBubbleView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // Clear gutter around the bubble so the drop shadow has room (window is borderless/clear).
-        .padding(QuickLookBubbleController.shadowMargin)
+        .padding(PeekController.shadowMargin)
     }
 
-    private func bubble(for item: ClipboardItem) -> some View {
-        let tail = QuickLookBubbleController.tailHeight
+    private func bubble(for item: Clip) -> some View {
+        let tail = PeekController.tailHeight
         return ZStack {
             BubbleTailShape(tailHeight: tail).fill(Theme.Surface.card)
             BubbleTailShape(tailHeight: tail).stroke(Theme.Line.l2, lineWidth: 1)
             content(for: item)
-                .padding(QuickLookBubbleController.contentInset)
+                .padding(PeekController.contentInset)
                 .padding(.bottom, tail) // keep content clear of the tail notch
         }
         .compositingGroup()
         .shadow(Theme.Shadow.floating)
         .popIn(trigger: pop.generation, nudge: 3)
         // A tiny, non-interactive hint that the peek is expandable (↗ opens a URL in the browser, ⤢
-        // opens the inspect window) — small and tertiary so it never dominates the bubble.
+        // opens the inspector) — small and tertiary so it never dominates the bubble.
         .overlay(alignment: .topTrailing) { expandHint(item) }
         // The WHOLE bubble is the expand affordance: a clear overlay button (the proven click path in
-        // this non-activating panel) so a tap anywhere opens the preview, with no bulky control.
+        // this non-activating panel) so a tap anywhere opens the inspector, with no bulky control.
         .overlay {
             Button { expand(item) } label: { Color.clear.contentShape(Rectangle()) }
                 .buttonStyle(.plain)
@@ -225,11 +225,11 @@ private struct QuickLookBubbleView: View {
     }
 
     /// A small ↗/⤢ glyph hinting the peek is clickable-to-expand. ↗ for a single URL (opens the
-    /// browser), the in-place expand glyph otherwise (opens the inspect window) — mirroring what the
-    /// tap will actually do via `ClipboardPanelController.showPreview`.
-    private func expandHint(_ item: ClipboardItem) -> some View {
+    /// browser), the in-place expand glyph otherwise (opens the inspector) — mirroring what the
+    /// tap will actually do via `PanelController.showInspector`.
+    private func expandHint(_ item: Clip) -> some View {
         let opensInBrowser: Bool
-        if case .openURL = RichPreviewRenderer.expandAction(for: item.text, kind: item.kind) {
+        if case .openURL = InspectorRenderer.expandAction(for: item.text, kind: item.kind) {
             opensInBrowser = true
         } else {
             opensInBrowser = false
@@ -242,7 +242,7 @@ private struct QuickLookBubbleView: View {
     }
 
     @ViewBuilder
-    private func content(for item: ClipboardItem) -> some View {
+    private func content(for item: Clip) -> some View {
         if item.kind == .image, let image = ImageCache.image(for: item, in: files) {
             Image(nsImage: image)
                 .resizable()
@@ -252,7 +252,7 @@ private struct QuickLookBubbleView: View {
         } else if item.kind == .image {
             ImageUnavailableView(symbolSize: 30, textSize: 12)
         } else {
-            Text(item.text.prefix(QuickLookBubbleController.bubbleTextCap))
+            Text(item.text.prefix(PeekController.bubbleTextCap))
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.Text.t1)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

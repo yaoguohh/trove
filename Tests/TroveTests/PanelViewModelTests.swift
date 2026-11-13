@@ -7,7 +7,7 @@ private func makeModel(itemCount: Int) -> PanelViewModel {
     let dir = FileManager.default.temporaryDirectory
         .appendingPathComponent("TroveVMTests-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    let store = ClipboardStore(files: ClipFiles(root: dir))
+    let store = ClipStore(files: ClipFiles(root: dir))
     for i in 0..<itemCount {
         store.add(text: "item-\(i)", sourceApp: "Test")
     }
@@ -112,7 +112,7 @@ struct PanelViewModelActionTests {
 
         model.undoDelete()
 
-        #expect(model.filter == ClipboardSearchFilter())
+        #expect(model.filter == ClipFilter())
         #expect(model.selectedID == loose.id)
     }
 }

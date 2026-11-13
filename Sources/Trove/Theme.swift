@@ -10,7 +10,7 @@ import SwiftUI
 enum Theme {
     /// Surfaces step lighter as they rise: coal → card → raise.
     enum Surface {
-        /// Ground: inspect window background.
+        /// Ground: inspector background.
         static let coal = Color(hex: 0x121419)
         /// Cards and controls. Opaque so a card fully occludes the blurred desktop behind the glass.
         static let card = Color(hex: 0x1A1E25)

@@ -1,7 +1,7 @@
 import Foundation
 
 /// Pure filtering of an already-sorted history for the panel's search box and scope chips. Lives
-/// apart from `ClipboardStore` (persistence, dedup, undo) so the per-keystroke cost is one obvious
+/// apart from `ClipStore` (persistence, dedup, undo) so the per-keystroke cost is one obvious
 /// function, and so `PanelViewModel` can run it over the exact array the store just published.
 enum ClipSearch {
     /// Max characters of a clip's text scanned per item per query. Bounds search to O(cap) so a huge
@@ -11,9 +11,9 @@ enum ClipSearch {
     /// match that occurs ONLY past this prefix (in a clip's sidecar tail) won't surface.
     static let scanCap = 20_000
 
-    /// `items` must already be in display order (pinned first, newest first) — `ClipboardStore`
+    /// `items` must already be in display order (pinned first, newest first) — `ClipStore`
     /// maintains that invariant on every mutation, so nothing is re-sorted here.
-    static func filter(_ items: [ClipboardItem], query: String, filter: ClipboardSearchFilter) -> [ClipboardItem] {
+    static func filter(_ items: [Clip], query: String, filter: ClipFilter) -> [Clip] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         var candidates = items
         if let kind = filter.kind {

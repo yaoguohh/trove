@@ -4,16 +4,16 @@ import Testing
 @testable import Trove
 
 @MainActor
-private func makeTempStore() -> (ClipboardStore, URL) {
+private func makeTempStore() -> (ClipStore, URL) {
     let dir = FileManager.default.temporaryDirectory
         .appendingPathComponent("TroveTests-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let url = dir.appendingPathComponent("history.json")
-    return (ClipboardStore(files: ClipFiles(root: url.deletingLastPathComponent())), url)
+    return (ClipStore(files: ClipFiles(root: url.deletingLastPathComponent())), url)
 }
 
 @MainActor
-struct ClipboardStoreDedupTests {
+struct ClipStoreDedupTests {
     @Test func dedupesIgnoringSurroundingWhitespace() {
         let (store, _) = makeTempStore()
         store.add(text: "foo", sourceApp: "X")
@@ -31,7 +31,7 @@ struct ClipboardStoreDedupTests {
 }
 
 @MainActor
-struct ClipboardStoreMutationTests {
+struct ClipStoreMutationTests {
     @Test func deleteRemovesItem() {
         let (store, _) = makeTempStore()
         store.add(text: "a", sourceApp: "X")
@@ -54,7 +54,7 @@ struct ClipboardStoreMutationTests {
 }
 
 @MainActor
-struct ClipboardStoreUndoDeleteTests {
+struct ClipStoreUndoDeleteTests {
     @Test func deleteThenUndoRestoresItem() {
         let (store, _) = makeTempStore()
         store.add(text: "alpha", sourceApp: "X")
@@ -160,7 +160,7 @@ struct ClipboardStoreUndoDeleteTests {
 }
 
 @MainActor
-struct ClipboardStorePinboardReorderTests {
+struct ClipStorePinboardReorderTests {
     // Default seeded order is [Favorites, Work, Code].
     @Test func movesToEnd() {
         let (store, _) = makeTempStore()
@@ -192,7 +192,7 @@ struct ClipboardStorePinboardReorderTests {
 }
 
 @MainActor
-struct ClipboardStoreLoadTests {
+struct ClipStoreLoadTests {
     @Test func corruptFileIsBackedUpNotSilentlyWiped() throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("TroveTests-\(UUID().uuidString)", isDirectory: true)
@@ -201,7 +201,7 @@ struct ClipboardStoreLoadTests {
         let corruptBytes = Data("this is not valid json".utf8)
         try corruptBytes.write(to: url)
 
-        _ = ClipboardStore(files: ClipFiles(root: url.deletingLastPathComponent()))
+        _ = ClipStore(files: ClipFiles(root: url.deletingLastPathComponent()))
 
         let siblings = try FileManager.default.contentsOfDirectory(atPath: dir.path)
         let backups = siblings.filter { $0.contains("corrupt") }
@@ -220,16 +220,16 @@ struct ClipboardStoreLoadTests {
 
 struct ContentDisplayCapTests {
     @Test func previewTakesPrefixBeforeNewlineReplace() {
-        // 2× the cap in characters, every other one a newline — the old `preview` flattened the whole
-        // multi-MB string; now it must bound the work to `displayPreviewCap`.
-        let huge = String(repeating: "a\n", count: ClipboardItem.displayPreviewCap)
-        let item = ClipboardItem(text: huge, sourceApp: "X")
-        #expect(item.preview.count <= ClipboardItem.displayPreviewCap)
+        // 2× the cap in characters, every other one a newline — an uncapped excerpt flattened the whole
+        // multi-MB string; now it must bound the work to `excerptCap`.
+        let huge = String(repeating: "a\n", count: Clip.excerptCap)
+        let item = Clip(text: huge, sourceApp: "X")
+        #expect(item.excerpt.count <= Clip.excerptCap)
     }
 
     @Test func shortPreviewIsUnchanged() {
-        let item = ClipboardItem(text: "line one\nline two", sourceApp: "X")
-        #expect(item.preview == "line one line two")
+        let item = Clip(text: "line one\nline two", sourceApp: "X")
+        #expect(item.excerpt == "line one line two")
     }
 }
 
@@ -241,7 +241,7 @@ struct ContentSearchCapTests {
         let filler = String(repeating: "x", count: 20_000 + 200)
         store.add(text: "FINDME" + filler + "TAILONLY", sourceApp: "X")
 
-        let filter = ClipboardSearchFilter()
+        let filter = ClipFilter()
         #expect(!ClipSearch.filter(store.items, query: "FINDME", filter: filter).isEmpty)  // in the scanned prefix → found
         #expect(ClipSearch.filter(store.items, query: "TAILONLY", filter: filter).isEmpty) // past the cap → not surfaced
     }
@@ -249,13 +249,13 @@ struct ContentSearchCapTests {
 
 // Each test store owns a temporary root, so big clips really spill to `texts/` there.
 @MainActor
-struct ClipboardStoreSidecarTests {
+struct ClipStoreSidecarTests {
     @Test func subThresholdStoresVerbatimNoSidecar() {
         let (store, _) = makeTempStore()
         store.add(text: "small clip", sourceApp: "X")
         let item = store.items[0]
         #expect(item.textFileName == nil)
-        #expect(item.contentHash == ClipboardItem.textIdentity("small clip"))
+        #expect(item.contentHash == Clip.textIdentity("small clip"))
         #expect(store.files.fullText(of: item) == "small clip")
         #expect(item.isTruncated == false)
         #expect(item.characterCount == 10)
@@ -263,10 +263,10 @@ struct ClipboardStoreSidecarTests {
 
     @Test func aboveCeilingTruncatesAndFlags() {
         let (store, _) = makeTempStore()
-        let original = ClipboardItem.ultimateSidecarCeiling + 100
+        let original = Clip.ultimateSidecarCeiling + 100
         store.add(text: String(repeating: "a", count: original), sourceApp: "X")
         let item = store.items[0]
-        #expect(store.files.fullText(of: item).count == ClipboardItem.ultimateSidecarCeiling)
+        #expect(store.files.fullText(of: item).count == Clip.ultimateSidecarCeiling)
         #expect(item.isTruncated == true)
         #expect(item.originalCharacterCount == original)
         #expect(item.characterCount == original) // footer shows the TRUE source length
@@ -274,18 +274,18 @@ struct ClipboardStoreSidecarTests {
 
     @Test func dedupBigClipByContent() {
         let (store, _) = makeTempStore()
-        let big = String(repeating: "z", count: ClipboardItem.sidecarThreshold + 500)
+        let big = String(repeating: "z", count: Clip.sidecarThreshold + 500)
         store.add(text: big, sourceApp: "X")
         store.add(text: big, sourceApp: "Y")
         #expect(store.items.count == 1)
-        #expect(store.items[0].contentHash == ClipboardItem.textIdentity(big))
+        #expect(store.items[0].contentHash == Clip.textIdentity(big))
     }
 
     @Test func bigClipDedupsAcrossSurroundingWhitespace() {
         // The P1 fix: dedup key is the hash of the NORMALIZED form, so a re-copy that differs only by
         // surrounding whitespace (a toggled trailing newline) dedups instead of writing a 2nd entry.
         let (store, _) = makeTempStore()
-        let big = String(repeating: "q", count: ClipboardItem.sidecarThreshold + 500)
+        let big = String(repeating: "q", count: Clip.sidecarThreshold + 500)
         store.add(text: big, sourceApp: "X")
         store.add(text: "  " + big + "\n", sourceApp: "Y")
         #expect(store.items.count == 1)
@@ -293,7 +293,7 @@ struct ClipboardStoreSidecarTests {
 
     @Test func dedupKeepsDistinctBigClips() {
         let (store, _) = makeTempStore()
-        let base = String(repeating: "z", count: ClipboardItem.sidecarThreshold + 500)
+        let base = String(repeating: "z", count: Clip.sidecarThreshold + 500)
         store.add(text: base + "ONE", sourceApp: "X")
         store.add(text: base + "TWO", sourceApp: "X")
         #expect(store.items.count == 2)
@@ -302,7 +302,7 @@ struct ClipboardStoreSidecarTests {
     @Test func dedupBoundaryCrossingThreshold() {
         let (store, _) = makeTempStore()
         store.add(text: "short", sourceApp: "X")
-        store.add(text: String(repeating: "z", count: ClipboardItem.sidecarThreshold + 500), sourceApp: "X")
+        store.add(text: String(repeating: "z", count: Clip.sidecarThreshold + 500), sourceApp: "X")
         // A small and a big clip have different identities and never false-match.
         #expect(store.items.count == 2)
     }
@@ -315,10 +315,10 @@ struct ClipboardStoreSidecarTests {
     }
 }
 
-struct ClipboardItemImageTests {
+struct ClipImageTests {
     @Test func imageCharacterCountStaysZero() {
         // Guards the init special-case (characterCount == 0 for images) through the new field set.
-        let item = ClipboardItem(text: "", sourceApp: "X", kind: .image)
+        let item = Clip(text: "", sourceApp: "X", kind: .image)
         #expect(item.characterCount == 0)
         #expect(item.originalCharacterCount == 0)
         #expect(item.isTruncated == false)
@@ -337,40 +337,40 @@ struct ClipboardFidelityTests {
     @Test func missingSidecarDegradesToInlinePrefix() {
         // A clip that claims a sidecar whose file is gone must NOT crash; fullText falls back to text.
         let (store, _) = makeTempStore()
-        var item = ClipboardItem(text: "inline prefix", sourceApp: "X")
+        var item = Clip(text: "inline prefix", sourceApp: "X")
         item.textFileName = "missing-\(UUID().uuidString).txt"
         #expect(store.files.fullText(of: item) == "inline prefix")
     }
 
     @Test func spilledClipRoundTripsFullTextFromSidecar() throws {
         let (store, _) = makeTempStore()
-        let full = String(repeating: "Z", count: ClipboardItem.inlineTextCap + 5_000)
+        let full = String(repeating: "Z", count: Clip.inlineTextCap + 5_000)
         store.add(text: full, sourceApp: "X")
         let item = store.items[0]
 
         let sidecar = try #require(store.files.textURL(for: item))
         #expect(FileManager.default.fileExists(atPath: sidecar.path))
         #expect(store.files.fullText(of: item) == full)            // reads the sidecar → full fidelity
-        #expect(item.text.count == ClipboardItem.inlineTextCap)    // inline keeps only the prefix
+        #expect(item.text.count == Clip.inlineTextCap)    // inline keeps only the prefix
 
         // The inspect-window bounded reader also pulls from the sidecar (FileHandle branch).
-        let bounded = PreviewWindowController.boundedBody(for: item, in: store.files)
+        let bounded = InspectorController.boundedBody(for: item, in: store.files)
         #expect(bounded.text == full)        // 25k < 256KB budget → shown whole
         #expect(bounded.isClipped == false)
     }
 }
 
 @MainActor
-struct ClipboardStoreFileLifecycleTests {
+struct ClipStoreFileLifecycleTests {
     @Test func launchSweepRemovesOrphanedFiles() throws {
         let (store, url) = makeTempStore()
-        store.add(text: String(repeating: "k", count: ClipboardItem.sidecarThreshold + 1), sourceApp: "X")
+        store.add(text: String(repeating: "k", count: Clip.sidecarThreshold + 1), sourceApp: "X")
         store.flush()
         let kept = try #require(store.files.textURL(for: store.items[0]))
         let orphan = store.files.textDirectory.appendingPathComponent("orphan.txt")
         try Data("x".utf8).write(to: orphan)
 
-        let reloaded = ClipboardStore(files: ClipFiles(root: url.deletingLastPathComponent()))
+        let reloaded = ClipStore(files: ClipFiles(root: url.deletingLastPathComponent()))
 
         #expect(FileManager.default.fileExists(atPath: kept.path))
         #expect(!FileManager.default.fileExists(atPath: orphan.path))
@@ -408,7 +408,7 @@ struct ClipboardStoreFileLifecycleTests {
         let historyPath = dir.appendingPathComponent("history.json", isDirectory: true)
         try FileManager.default.createDirectory(at: historyPath, withIntermediateDirectories: true)
 
-        let store = ClipboardStore(files: ClipFiles(root: dir))
+        let store = ClipStore(files: ClipFiles(root: dir))
         store.add(text: "new", sourceApp: "X")
         store.flush()
 
@@ -419,22 +419,22 @@ struct ClipboardStoreFileLifecycleTests {
 }
 
 @MainActor
-struct PreviewWindowBoundedBodyTests {
+struct InspectorBoundedBodyTests {
     private let files = ClipFiles(root: FileManager.default.temporaryDirectory
         .appendingPathComponent("TroveTests-\(UUID().uuidString)", isDirectory: true))
 
     @Test func inlineShortTextIsNotClipped() {
-        let item = ClipboardItem(text: "short inline body", sourceApp: "X")
-        let result = PreviewWindowController.boundedBody(for: item, in: files)
+        let item = Clip(text: "short inline body", sourceApp: "X")
+        let result = InspectorController.boundedBody(for: item, in: files)
         #expect(result.text == "short inline body")
         #expect(result.isClipped == false)
     }
 
     @Test func missingSidecarDegradesToInlinePrefix() {
         // The sidecar path is set but the file is gone → FileHandle open fails → inline-prefix branch.
-        var item = ClipboardItem(text: "inline only", sourceApp: "X")
+        var item = Clip(text: "inline only", sourceApp: "X")
         item.textFileName = "missing-\(UUID().uuidString).txt"
-        let result = PreviewWindowController.boundedBody(for: item, in: files)
+        let result = InspectorController.boundedBody(for: item, in: files)
         #expect(result.text == "inline only")
         #expect(result.isClipped == false)
     }
@@ -443,18 +443,18 @@ struct PreviewWindowBoundedBodyTests {
         // Multi-byte scalars (3 bytes each) so the 256KB byte cut lands mid-scalar — exercises both
         // the clipped path and the trailing U+FFFD trim.
         let big = String(repeating: "界", count: 120_000) // 360,000 UTF-8 bytes > 262,144 cap
-        var item = ClipboardItem(text: String(big.prefix(ClipboardItem.inlineTextCap)), sourceApp: "X")
+        var item = Clip(text: String(big.prefix(Clip.inlineTextCap)), sourceApp: "X")
         item.textFileName = try files.writeText(big, for: item.id)
 
-        let result = PreviewWindowController.boundedBody(for: item, in: files)
+        let result = InspectorController.boundedBody(for: item, in: files)
         #expect(result.isClipped == true)
-        #expect(result.text.utf8.count <= PreviewWindowController.previewWindowCap)
+        #expect(result.text.utf8.count <= InspectorController.textBudget)
         #expect(!result.text.hasSuffix("\u{FFFD}")) // partial trailing scalar was trimmed
     }
 }
 
 @MainActor
-struct ClipboardStoreOrderInvariantTests {
+struct ClipStoreOrderInvariantTests {
     @Test func deletePinboardRestoresDisplayOrder() {
         let (store, _) = makeTempStore()
         store.add(text: "oldest", sourceApp: "X")
@@ -513,14 +513,14 @@ struct ClipboardStoreOrderInvariantTests {
             sourceApp: "X", sourceBundleIdentifier: nil, sourceAppPath: nil, createdAt: Date()
         )
         store.flush()
-        let reloaded = ClipboardStore(files: ClipFiles(root: url.deletingLastPathComponent()))
+        let reloaded = ClipStore(files: ClipFiles(root: url.deletingLastPathComponent()))
         #expect(reloaded.items.first?.thumbnailFileName == "a.thumb.png")
     }
 }
 
 @MainActor
-struct ClipboardStoreContentIdentityTests {
-    private func addImage(_ store: ClipboardStore, bytes: String) {
+struct ClipStoreContentIdentityTests {
+    private func addImage(_ store: ClipStore, bytes: String) {
         store.addImage(data: Data(bytes.utf8), sourceApp: "X")
     }
 
@@ -528,7 +528,7 @@ struct ClipboardStoreContentIdentityTests {
         let (store, _) = makeTempStore()
         addImage(store, bytes: "png A")
         addImage(store, bytes: "png B")
-        let imageA = try #require(store.items.first { $0.contentHash == ClipboardItem.hash(Data("png A".utf8)) })
+        let imageA = try #require(store.items.first { $0.contentHash == Clip.hash(Data("png A".utf8)) })
 
         store.delete(imageA)
         let restored = store.undoDelete()
@@ -562,7 +562,7 @@ struct ClipboardStoreContentIdentityTests {
         addImage(store, bytes: "png")
         #expect(store.items[0].text.isEmpty)
         #expect(store.items[0].title == nil)
-        #expect(store.items[0].displayTitle == ClipboardKind.image.title)
+        #expect(store.items[0].displayTitle == ClipKind.image.title)
     }
 
     @Test func versionOneDocumentMigrates() throws {
@@ -579,12 +579,12 @@ struct ClipboardStoreContentIdentityTests {
         """
         try Data(legacy.utf8).write(to: url)
 
-        let store = ClipboardStore(files: ClipFiles(root: url.deletingLastPathComponent()))
+        let store = ClipStore(files: ClipFiles(root: url.deletingLastPathComponent()))
         let image = try #require(store.items.first { $0.kind == .image })
         #expect(image.text.isEmpty)
         #expect(image.title == nil)
         #expect(image.contentHash == nil)
-        #expect(store.items[1].contentHash == ClipboardItem.textIdentity("hi"))
+        #expect(store.items[1].contentHash == Clip.textIdentity("hi"))
         #expect(store.items[2].contentHash == "legacyhash")
 
         store.flush()
