@@ -1,4 +1,3 @@
-import Darwin
 import Foundation
 import ImageIO
 
@@ -28,6 +27,7 @@ final class LinkMetadataProvider {
     /// for pathological pages, not the typical read.
     private nonisolated static let maxHTMLBytes = 512_000
     private nonisolated static let maxIconBytes = 1_000_000
+    private nonisolated static let requestTimeout: TimeInterval = 7
     /// How long a lookup that produced nothing (no title, no icon) is believed before retrying.
     nonisolated static let negativeCacheTTL: TimeInterval = 24 * 60 * 60
     /// Cap on simultaneous page fetches. A strip of uncached link cards used to open one URLSession
@@ -35,15 +35,12 @@ final class LinkMetadataProvider {
     nonisolated static let maxConcurrentFetches = 4
     nonisolated static let autoFetchDefaultsKey = "Trove.linkMetadataAutoFetch"
 
-    /// Whether link cards may reach out to the network to fetch title/favicon.
-    /// Defaults to enabled, but users can turn it off to avoid leaking which URLs
-    /// they copy to third-party hosts.
+    /// Whether link cards may reach out to the network to fetch title/favicon. Off until the user
+    /// turns it on in the status menu: a fetch tells the link's host that the link was copied, and a
+    /// one-time link whose token sits in the path (email verification, password reset) could be
+    /// consumed just by showing its card. Cached records are still shown while it is off.
     nonisolated static var isAutoFetchEnabled: Bool {
-        get {
-            let defaults = UserDefaults.standard
-            if defaults.object(forKey: autoFetchDefaultsKey) == nil { return true }
-            return defaults.bool(forKey: autoFetchDefaultsKey)
-        }
+        get { UserDefaults.standard.bool(forKey: autoFetchDefaultsKey) }
         set { UserDefaults.standard.set(newValue, forKey: autoFetchDefaultsKey) }
     }
 
@@ -58,19 +55,58 @@ final class LinkMetadataProvider {
     private nonisolated static let session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        configuration.timeoutIntervalForRequest = 7
+        configuration.timeoutIntervalForRequest = requestTimeout
         configuration.httpMaximumConnectionsPerHost = 2
         return URLSession(configuration: configuration, delegate: SSRFGuardSessionDelegate(), delegateQueue: nil)
     }()
 
     nonisolated static var cacheDirectoryURL: URL {
+        AppPaths.caches.appendingPathComponent("link-metadata", isDirectory: true)
+    }
+
+    /// Releases before 1.3 kept this cache under Application Support, where nothing ever pruned it.
+    private nonisolated static var legacyCacheDirectoryURL: URL {
         AppPaths.applicationSupportSubdirectory("link-metadata")
     }
 
+    /// Launch-time housekeeping, off the main actor: move a legacy cache into Caches once, then delete
+    /// the records (and icons) of links no longer in history. `linkTexts` are the texts of the
+    /// history's link clips — the same strings link cards look up.
+    nonisolated static func pruneCache(
+        keepingLinksIn linkTexts: [String],
+        directory: URL = cacheDirectoryURL,
+        legacyDirectory: URL = legacyCacheDirectoryURL
+    ) {
+        let fileManager = FileManager.default
+        if fileManager.fileExists(atPath: legacyDirectory.path) {
+            if fileManager.fileExists(atPath: directory.path) {
+                try? fileManager.removeItem(at: legacyDirectory)
+            } else {
+                try? fileManager.createDirectory(at: directory.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? fileManager.moveItem(at: legacyDirectory, to: directory)
+            }
+        }
+        let live = Set(linkTexts.compactMap(cacheKey(forRawURL:)))
+        guard let files = try? fileManager.contentsOfDirectory(atPath: directory.path) else { return }
+        for file in files where !live.contains(cacheKey(ofFileNamed: file)) {
+            try? fileManager.removeItem(at: directory.appendingPathComponent(file))
+        }
+    }
+
+    /// Cache files are `<key>.json` and `<key>-icon.<ext>`; the key is hex, so it ends at the first
+    /// "." or "-".
+    nonisolated static func cacheKey(ofFileNamed name: String) -> String {
+        String(name.prefix { $0 != "." && $0 != "-" })
+    }
+
+    nonisolated static func cacheKey(forRawURL rawURL: String) -> String? {
+        normalizedURL(from: rawURL).map { stableHash(sanitizedRequestURL($0).absoluteString) }
+    }
+
     func metadata(for rawURL: String) async -> LinkMetadata? {
-        guard let url = normalizedURL(from: rawURL) else { return nil }
+        guard let url = Self.normalizedURL(from: rawURL) else { return nil }
         let requestURL = Self.sanitizedRequestURL(url)
-        let key = cacheKey(for: requestURL)
+        let key = Self.stableHash(requestURL.absoluteString)
         // A cached record is reused unless it is an expired negative result (and fetching is allowed),
         // in which case it is refreshed below.
         let cached = memoryCache[key] ?? readCachedMetadata(for: key)
@@ -80,7 +116,7 @@ final class LinkMetadataProvider {
                 return cached
             }
         }
-        // Privacy: never hit the network unless the user has opted in.
+        // Privacy: never hit the network unless the user has turned link previews on.
         guard Self.isAutoFetchEnabled else {
             return Self.fallbackMetadata(for: requestURL)
         }
@@ -138,12 +174,12 @@ final class LinkMetadataProvider {
         }
     }
 
-    private func normalizedURL(from rawURL: String) -> URL? {
+    private nonisolated static func normalizedURL(from rawURL: String) -> URL? {
         let trimmed = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: trimmed), url.scheme == "http" || url.scheme == "https" else {
             return nil
         }
-        guard let host = url.host(), Self.isAllowedHost(host) else { return nil }
+        guard let host = url.host(), isAllowedHost(host) else { return nil }
         return url
     }
 
@@ -153,10 +189,6 @@ final class LinkMetadataProvider {
         components.query = nil
         components.fragment = nil
         return components.url ?? url
-    }
-
-    private func cacheKey(for url: URL) -> String {
-        Self.stableHash(url.absoluteString)
     }
 
     private nonisolated static func stableHash(_ value: String) -> String {
@@ -230,7 +262,6 @@ final class LinkMetadataProvider {
     private nonisolated static func fetchIcon(from url: URL?, key: String) async -> String? {
         guard let url else { return nil }
         do {
-            guard let host = url.host(), isAllowedHost(host) else { return nil }
             let (data, response) = try await fetch(from: url, accept: "image/*,*/*;q=0.5", maxBytes: maxIconBytes, stopAtHeadEnd: false)
             guard let httpResponse = response as? HTTPURLResponse, 200..<400 ~= httpResponse.statusCode else {
                 return nil
@@ -258,8 +289,8 @@ final class LinkMetadataProvider {
             throw URLError(.badServerResponse)
         }
 
-        var request = URLRequest(url: url, timeoutInterval: 7)
-        request.setValue("Trove/0.1 LinkMetadata", forHTTPHeaderField: "User-Agent")
+        var request = URLRequest(url: url, timeoutInterval: requestTimeout)
+        request.setValue("Trove/\(AppInfo.version) LinkMetadata", forHTTPHeaderField: "User-Agent")
         request.setValue(accept, forHTTPHeaderField: "Accept")
 
         let (bytes, response) = try await session.bytes(for: request)

@@ -149,3 +149,57 @@ struct AsyncSemaphoreTests {
         #expect(await tracker.current == 0)
     }
 }
+
+struct LinkMetadataCachePruneTests {
+    private func tempDirectory() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("TroveTests-\(UUID().uuidString)", isDirectory: true)
+    }
+
+    private func touch(_ directory: URL, _ name: String) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: directory.appendingPathComponent(name))
+    }
+
+    @Test func keyIsReadBackFromBothFileShapes() {
+        #expect(LinkMetadataProvider.cacheKey(ofFileNamed: "a1b2.json") == "a1b2")
+        #expect(LinkMetadataProvider.cacheKey(ofFileNamed: "a1b2-icon.png") == "a1b2")
+    }
+
+    @Test func queryAndFragmentDoNotChangeTheKey() {
+        // The request drops query and fragment, so the cache key must too.
+        #expect(LinkMetadataProvider.cacheKey(forRawURL: "https://example.com/a?token=1#x")
+            == LinkMetadataProvider.cacheKey(forRawURL: "https://example.com/a"))
+        #expect(LinkMetadataProvider.cacheKey(forRawURL: "not a link") == nil)
+    }
+
+    @Test func removesRecordsOfLinksNoLongerInHistory() throws {
+        let directory = tempDirectory()
+        let kept = try #require(LinkMetadataProvider.cacheKey(forRawURL: "https://example.com/kept"))
+        let gone = try #require(LinkMetadataProvider.cacheKey(forRawURL: "https://example.com/gone"))
+        for name in ["\(kept).json", "\(kept)-icon.png", "\(gone).json", "\(gone)-icon.ico"] {
+            try touch(directory, name)
+        }
+
+        LinkMetadataProvider.pruneCache(
+            keepingLinksIn: ["https://example.com/kept"],
+            directory: directory,
+            legacyDirectory: tempDirectory()
+        )
+
+        let left = try FileManager.default.contentsOfDirectory(atPath: directory.path).sorted()
+        #expect(left == ["\(kept)-icon.png", "\(kept).json"].sorted())
+    }
+
+    @Test func movesTheLegacyCacheOnce() throws {
+        let root = tempDirectory()
+        let legacy = root.appendingPathComponent("legacy", isDirectory: true)
+        let directory = root.appendingPathComponent("caches/link-metadata", isDirectory: true)
+        let key = try #require(LinkMetadataProvider.cacheKey(forRawURL: "https://example.com/"))
+        try touch(legacy, "\(key).json")
+
+        LinkMetadataProvider.pruneCache(keepingLinksIn: ["https://example.com/"], directory: directory, legacyDirectory: legacy)
+
+        #expect(!FileManager.default.fileExists(atPath: legacy.path))
+        #expect(FileManager.default.fileExists(atPath: directory.appendingPathComponent("\(key).json").path))
+    }
+}

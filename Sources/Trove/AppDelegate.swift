@@ -54,6 +54,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
             self?.store.backfillThumbnails()
         }
+        let linkTexts = store.items.filter { $0.kind == .link }.map(\.text)
+        Task.detached(priority: .utility) {
+            LinkMetadataProvider.pruneCache(keepingLinksIn: linkTexts)
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -116,7 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let view = StatusMenuView(
             clipCount: store.matches(query: "").count,
-            version: Self.appVersion,
+            version: AppInfo.version,
             accessibilityTrusted: AccessibilityPermission.isTrusted,
             shortcutStore: shortcutStore,
             linkPreviewsOn: LinkMetadataProvider.isAutoFetchEnabled,
@@ -194,10 +198,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenuPanel?.orderOut(nil)
         statusMenuPanel = nil
         statusMenuLastClosed = Date()
-    }
-
-    private static var appVersion: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
     }
 
     @objc private func showPanel() {

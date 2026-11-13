@@ -24,7 +24,7 @@ Trove 是一个本地优先的 macOS 剪贴板管理器——键盘优先的悬�
 - 收藏板:可改颜色 + 类似桌面图标的拖拽排序
 - Dock 风格半透明玻璃面板,单一深色 anthracite 配色:一个强调色、四级表面、发丝线描边
 - 右键菜单栏图标弹出紧凑菜单——快捷键、链接预览、后台运行全部内联(不再有独立偏好窗口)
-- 链接标题 + favicon 预览,带本地元数据缓存
+- 链接标题 + favicon 预览,带本地元数据缓存(默认关闭,在菜单栏菜单里打开「链接预览」;抓取会让链接所在网站知道你复制了它)
 - 通过 [Sparkle](https://sparkle-project.org) 应用内自动更新
 - 本地 JSON 存储于 `~/Library/Application Support/Trove/`;历史默认保留 500 条(`defaults write io.github.yaoguohh.trove Trove.maxItems 1000` 可改,范围 50 到 5000)
 - 忽略标记为 transient / concealed 的剪贴(密码管理器、文本扩展工具),密码不会进入历史文件

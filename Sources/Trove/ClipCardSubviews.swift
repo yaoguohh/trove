@@ -110,7 +110,7 @@ struct LinkSiteIcon: View {
 
     var body: some View {
         Group {
-            if let url = metadata?.iconFileURL, let image = ImageCache.image(at: url) {
+            if let url = metadata?.iconFileURL, let image = ImageCache.icon(at: url) {
                 Image(nsImage: image)
                     .resizable()
                     .interpolation(.high)

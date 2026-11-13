@@ -25,7 +25,7 @@ natively in Swift / AppKit + SwiftUI.
 - Pinboards with custom colors and home-screen-style drag-to-reorder
 - Dock-style translucent glass panel in a single dark "anthracite" palette — one accent, four surface tiers, hairline edges
 - Right-click the menu-bar icon for a compact menu — shortcut, link previews, and background mode, all inline (no separate Preferences window)
-- Link title + favicon previews with local metadata caching
+- Link title + favicon previews with local metadata caching (off by default — turn on **Link Previews** in the menu-bar menu; fetching tells the link's site that you copied it)
 - In-app auto-updates via [Sparkle](https://sparkle-project.org)
 - Local JSON storage in `~/Library/Application Support/Trove/`; history keeps 500 clips by default (`defaults write io.github.yaoguohh.trove Trove.maxItems 1000` to change, 50–5000)
 - Ignores transient and concealed pasteboard writes (password managers, text expanders) — secrets never reach the history file

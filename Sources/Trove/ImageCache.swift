@@ -28,6 +28,12 @@ enum ImageCache {
         return cached(url, in: fullImages)
     }
 
+    /// A small decorative image (a link's favicon). Kept with the thumbnails so it survives hide/show
+    /// instead of being decoded again on every summon.
+    static func icon(at url: URL) -> NSImage? {
+        cached(url, in: thumbnails)
+    }
+
     /// The full-resolution image (peek, inspect window, drag-out).
     static func image(at url: URL) -> NSImage? {
         cached(url, in: fullImages)
