@@ -49,9 +49,7 @@ final class ClipboardMonitor {
         lastChangeCount = changeCount
 
         let types = (pasteboard.types ?? []).map(\.rawValue)
-        let string = pasteboard.string(forType: .string)
-
-        switch PasteboardIngest.decide(types: types, string: string) {
+        switch PasteboardIngest.decide(types: types, string: self.pasteboard.string(forType: .string)) {
         case .ignore(let reason):
             Log.clipboard.debug("skipped pasteboard change: \(String(describing: reason), privacy: .public)")
         case .nothing:

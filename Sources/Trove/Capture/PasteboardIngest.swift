@@ -48,11 +48,13 @@ enum PasteboardIngest {
         "net.antelle.keeweb"
     ]
 
-    /// `types` are the pasteboard's declared type identifiers; `string` is its plain-text
-    /// representation (nil when absent).
-    static func decide(types: [String], string: String?) -> Decision {
+    /// `types` are the pasteboard's declared type identifiers; `string` reads its plain-text
+    /// representation (nil when absent). It is evaluated only once the types say the change may be
+    /// kept, so a password manager's concealed write is never read at all.
+    static func decide(types: [String], string: @autoclosure () -> String?) -> Decision {
         if types.contains(where: concealedTypes.contains) { return .ignore(.concealed) }
         if types.contains(where: transientTypes.contains) { return .ignore(.transient) }
+        let string = string()
 
         let imageType: ImageType? = types.contains(ImageType.png.pasteboardType.rawValue) ? .png
             : types.contains(ImageType.tiff.pasteboardType.rawValue) ? .tiff

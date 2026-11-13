@@ -61,3 +61,13 @@ struct PasteboardIngestDecisionTests {
         #expect(PasteboardIngest.decide(types: [], string: nil) == .nothing)
     }
 }
+
+struct PasteboardIngestPrivacyTests {
+    @Test func concealedContentIsNeverRead() {
+        var read = false
+        func readString() -> String? { read = true; return "secret" }
+        let decision = PasteboardIngest.decide(types: ["public.utf8-plain-text", "org.nspasteboard.ConcealedType"], string: readString())
+        #expect(decision == .ignore(.concealed))
+        #expect(read == false)
+    }
+}
