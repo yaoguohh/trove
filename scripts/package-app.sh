@@ -24,17 +24,20 @@ MARKETING_VERSION="${MARKETING_VERSION:-0.1.0-dev}"
 BUILD_VERSION="${TROVE_BUILD_VERSION:-${DEFAULT_BUILD:-1}}"
 
 cd "$ROOT_DIR"
-swift build -c release
+# Universal binary: Apple Silicon and Intel Macs on the supported macOS versions (14+).
+BUILD_ARCHS=(--arch arm64 --arch x86_64)
+swift build -c release "${BUILD_ARCHS[@]}"
+BIN_DIR="$(swift build -c release "${BUILD_ARCHS[@]}" --show-bin-path)"
 
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR" "$FRAMEWORKS_DIR"
-cp "$ROOT_DIR/.build/release/Trove" "$MACOS_DIR/Trove"
+cp "$BIN_DIR/Trove" "$MACOS_DIR/Trove"
 
 # Embed Sparkle.framework. SwiftPM links it but does NOT place the runtime helpers
 # (Autoupdate / Updater.app / XPC services) into the .app, so copy the framework in and add the
-# standard rpath so the executable resolves it at runtime. Prefer the universal xcframework slice.
-SPARKLE_FRAMEWORK="$(find "$ROOT_DIR/.build/artifacts" -path '*macos-arm64*/Sparkle.framework' -type d 2>/dev/null | head -1)"
-[ -z "$SPARKLE_FRAMEWORK" ] && SPARKLE_FRAMEWORK="$ROOT_DIR/.build/release/Sparkle.framework"
+# standard rpath so the executable resolves it at runtime. Use the universal xcframework slice.
+SPARKLE_FRAMEWORK="$(find "$ROOT_DIR/.build/artifacts" -path '*macos-arm64_x86_64*/Sparkle.framework' -type d 2>/dev/null | head -1)"
+[ -z "$SPARKLE_FRAMEWORK" ] && SPARKLE_FRAMEWORK="$BIN_DIR/Sparkle.framework"
 if [ -d "$SPARKLE_FRAMEWORK" ]; then
   cp -R "$SPARKLE_FRAMEWORK" "$FRAMEWORKS_DIR/"
   install_name_tool -add_rpath "@executable_path/../Frameworks" "$MACOS_DIR/Trove" 2>/dev/null || true
@@ -50,52 +53,13 @@ for lproj in "$ROOT_DIR"/Localization/*.lproj; do
   [ -d "$lproj" ] && cp -R "$lproj" "$RESOURCES_DIR/"
 done
 
-cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleDevelopmentRegion</key>
-  <string>en</string>
-  <key>CFBundleLocalizations</key>
-  <array>
-    <string>en</string>
-    <string>zh-Hans</string>
-  </array>
-  <key>CFBundleExecutable</key>
-  <string>Trove</string>
-  <key>CFBundleIdentifier</key>
-  <string>io.github.yaoguohh.trove</string>
-  <key>CFBundleInfoDictionaryVersion</key>
-  <string>6.0</string>
-  <key>CFBundleName</key>
-  <string>Trove</string>
-  <key>CFBundleIconFile</key>
-  <string>Trove</string>
-  <key>CFBundlePackageType</key>
-  <string>APPL</string>
-  <key>CFBundleShortVersionString</key>
-  <string>0.1.0</string>
-  <key>CFBundleVersion</key>
-  <string>1</string>
-  <!-- Launch Services must classify Trove as a menu-bar agent before the executable starts;
-       setting .accessory only after launch can briefly flash a Dock icon. The app can still
-       switch to .regular at runtime when the user turns off “Run in Background”. -->
-  <key>LSUIElement</key>
-  <true/>
-  <key>LSMinimumSystemVersion</key>
-  <string>14.0</string>
-  <key>NSHumanReadableCopyright</key>
-  <string>Copyright © 2026 Trove</string>
-</dict>
-</plist>
-PLIST
+cp "$ROOT_DIR/scripts/Info.plist" "$CONTENTS_DIR/Info.plist"
 
-# Sparkle auto-update keys (appended to the base plist; SUPublicEDKey omitted cleanly when unset).
+# Per-build keys on top of the base plist: version (Sparkle compares CFBundleVersion) and Sparkle's
+# auto-update settings (SUPublicEDKey omitted cleanly when unset).
 PLB=/usr/libexec/PlistBuddy
-# Override the placeholder version with the release version (Sparkle compares CFBundleVersion).
-"$PLB" -c "Set :CFBundleShortVersionString $MARKETING_VERSION" "$CONTENTS_DIR/Info.plist"
-"$PLB" -c "Set :CFBundleVersion $BUILD_VERSION" "$CONTENTS_DIR/Info.plist"
+"$PLB" -c "Add :CFBundleShortVersionString string $MARKETING_VERSION" "$CONTENTS_DIR/Info.plist"
+"$PLB" -c "Add :CFBundleVersion string $BUILD_VERSION" "$CONTENTS_DIR/Info.plist"
 "$PLB" -c "Add :SUFeedURL string $SU_FEED_URL" "$CONTENTS_DIR/Info.plist"
 "$PLB" -c "Add :SUEnableAutomaticChecks bool true" "$CONTENTS_DIR/Info.plist"
 if [[ -n "$SU_PUBLIC_KEY" ]]; then

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Base Info.plist for Trove.app. package-app.sh copies it into the bundle, then adds the
+     per-build keys: CFBundleShortVersionString, CFBundleVersion, SUFeedURL, SUEnableAutomaticChecks
+     and (when set) SUPublicEDKey. -->
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleLocalizations</key>
+  <array>
+    <string>en</string>
+    <string>zh-Hans</string>
+  </array>
+  <key>CFBundleExecutable</key>
+  <string>Trove</string>
+  <key>CFBundleIdentifier</key>
+  <string>io.github.yaoguohh.trove</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>Trove</string>
+  <key>CFBundleIconFile</key>
+  <string>Trove</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <!-- Launch Services must classify Trove as a menu-bar agent before the executable starts;
+       setting .accessory only after launch can briefly flash a Dock icon. The app can still
+       switch to .regular at runtime when the user turns off “Run in Background”. -->
+  <key>LSUIElement</key>
+  <true/>
+  <key>LSMinimumSystemVersion</key>
+  <string>14.0</string>
+  <key>NSHumanReadableCopyright</key>
+  <string>Copyright © 2026 Trove</string>
+</dict>
+</plist>

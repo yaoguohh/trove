@@ -14,13 +14,11 @@ Apple notarization). Distribution is **GitHub Releases** (Homebrew Cask optional
 
 ### 1. Get Sparkle's command-line tools
 
-`generate_keys` and `generate_appcast` ship in Sparkle's **binary tarball**, not via SwiftPM:
+`generate_keys` and `generate_appcast` ship in Sparkle's **binary tarball**, not via SwiftPM. The
+script downloads the version `Package.resolved` pins (CI uses the same script):
 
 ```bash
-# Match the version resolved in Package.resolved (currently 2.9.x)
-curl -L -o /tmp/sparkle.tar.xz \
-  https://github.com/sparkle-project/Sparkle/releases/download/2.9.2/Sparkle-2.9.2.tar.xz
-mkdir -p /tmp/sparkle && tar -xf /tmp/sparkle.tar.xz -C /tmp/sparkle
+bash scripts/fetch-sparkle-tools.sh /tmp/sparkle
 ls /tmp/sparkle/bin   # generate_keys, generate_appcast, sign_update, ...
 ```
 
@@ -72,7 +70,7 @@ release it was cut from; never ship one.
 export TROVE_MARKETING_VERSION="0.2.0"
 export TROVE_BUILD_VERSION="<larger than the live feed's sparkle:version>"
 export TROVE_SU_PUBLIC_KEY="<public key from generate_keys>"
-bash scripts/package-app.sh         # → .build/Trove.app (ad-hoc, Sparkle embedded & signed)
+bash scripts/package-app.sh         # → .build/Trove.app (universal, ad-hoc, Sparkle embedded & signed)
 ```
 
 Leave `TROVE_SU_FEED_URL` unset: the script's default is the Release-asset feed described above.
@@ -88,12 +86,7 @@ codesign --verify --deep --strict --verbose=2 .build/Trove.app   # must say "val
 ### 3. Build the .dmg and generate the appcast
 
 ```bash
-mkdir -p dist
-STAGE="$(mktemp -d)"
-cp -R .build/Trove.app "$STAGE/" && ln -s /Applications "$STAGE/Applications"
-hdiutil create -volname "Trove" -srcfolder "$STAGE" \
-  -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov dist/Trove.dmg
-rm -rf "$STAGE"
+bash scripts/make-dmg.sh            # → dist/Trove.dmg (CI uses the same script)
 
 # Reads the private key from your Keychain, writes appcast.xml with sparkle:edSignature + deltas.
 # --download-url-prefix makes each enclosure point at the GitHub Release download URL.

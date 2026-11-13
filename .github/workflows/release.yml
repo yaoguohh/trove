@@ -47,26 +47,14 @@ jobs:
       - name: Verify signature
         run: codesign --verify --deep --strict --verbose=2 .build/Trove.app
 
-      - name: Build .dmg
-        run: |
-          mkdir -p dist
-          STAGE="$(mktemp -d)"
-          cp -R .build/Trove.app "$STAGE/"
-          ln -s /Applications "$STAGE/Applications"   # drag-to-install; Sparkle ignores the symlink
-          hdiutil create \
-            -volname "Trove" \
-            -srcfolder "$STAGE" \
-            -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov \
-            "dist/Trove.dmg"
-          rm -rf "$STAGE"
+      - name: Verify universal binary
+        run: for arch in arm64 x86_64; do lipo .build/Trove.app/Contents/MacOS/Trove -verify_arch "$arch"; done
 
-      - name: Fetch Sparkle CLI tools
-        run: |
-          # Keep this version in sync with Package.resolved.
-          SPARKLE_VERSION="2.9.2"
-          curl -L -o /tmp/sparkle.tar.xz \
-            "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
-          mkdir -p /tmp/sparkle && tar -xf /tmp/sparkle.tar.xz -C /tmp/sparkle
+      - name: Build .dmg
+        run: bash scripts/make-dmg.sh
+
+      - name: Fetch Sparkle CLI tools (version pinned by Package.resolved)
+        run: bash scripts/fetch-sparkle-tools.sh /tmp/sparkle
 
       - name: Generate appcast (EdDSA-signed)
         run: |
