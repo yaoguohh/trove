@@ -84,12 +84,7 @@ struct ShortcutRecorder: View {
     }
 
     private var liveModifierSymbols: [String] {
-        var symbols: [String] = []
-        if liveModifiers.contains(.control) { symbols.append("⌃") }
-        if liveModifiers.contains(.option) { symbols.append("⌥") }
-        if liveModifiers.contains(.shift) { symbols.append("⇧") }
-        if liveModifiers.contains(.command) { symbols.append("⌘") }
-        return symbols
+        ModifierKey.symbols(flags: liveModifiers)
     }
 
     private func startRecording() {

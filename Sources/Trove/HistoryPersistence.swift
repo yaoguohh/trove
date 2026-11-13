@@ -7,8 +7,9 @@ import Foundation
 /// - 1: no `version` key; image clips stored "Image" as text and title; only sidecar-spilled text
 ///   clips had an identity (`fullTextHash`).
 /// - 2: every clip carries `contentHash`; image clips have empty text and no placeholder title.
+/// - 3: `link` means a single bare URL (version 2 also marked paragraphs that start with one).
 struct StoreDocument: Codable, Sendable {
-    static let currentVersion = 2
+    static let currentVersion = 3
 
     var version: Int
     var items: [ClipboardItem]

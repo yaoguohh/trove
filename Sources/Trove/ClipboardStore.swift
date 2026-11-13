@@ -1,12 +1,7 @@
 import Foundation
 
-enum ClipboardScope {
-    case history
-    case pinned
-}
-
+/// The panel's scope chips: an optional kind and an optional pinboard (nil = everything).
 struct ClipboardSearchFilter: Equatable {
-    var scope: ClipboardScope = .history
     var kind: ClipboardKind?
     var pinboardID: UUID?
 }

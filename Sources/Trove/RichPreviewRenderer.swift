@@ -28,17 +28,6 @@ enum RichPreviewRenderer {
         return .inspectWindow
     }
 
-    /// A clip is a single link only if it's one bare URL — no interior whitespace/newline (so a
-    /// paragraph that merely starts with a link is NOT treated as a link card). Bounded to a sane
-    /// length so this stays O(cap) even if handed something huge.
-    static func isSingleURL(_ text: String) -> Bool {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, trimmed.count <= 4_000 else { return false }
-        guard !trimmed.contains(where: { $0 == " " || $0 == "\n" || $0 == "\t" }) else { return false }
-        guard trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") else { return false }
-        return URL(string: trimmed) != nil
-    }
-
     /// Pretty-print valid JSON natively (zero dependencies). Gated three ways so it never does heavy
     /// work on non-JSON or oversized input: first char must be `{`/`[`, the UTF-8 size must be within
     /// `maxBytes`, and it must actually parse. Returns `nil` (→ render as plain) otherwise.
@@ -59,7 +48,7 @@ enum RichPreviewRenderer {
     /// (≤ inlineTextCap) so it's cheap; a JSON clip larger than that keeps its sidecar full text but
     /// renders as plain (its truncated inline prefix won't parse) — an accepted limitation.
     static func detect(_ text: String, kind: ClipboardKind) -> RichPreviewContent {
-        if kind == .link, isSingleURL(text) {
+        if kind == .link, ClipboardItem.isSingleURL(text) {
             return .url(text.trimmingCharacters(in: .whitespacesAndNewlines))
         }
         if let pretty = prettyJSON(text) {

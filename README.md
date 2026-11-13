@@ -14,7 +14,7 @@ natively in Swift / AppKit + SwiftUI.
 ## Features
 
 - Menu bar app — runs in the background with no Dock icon by default
-- Visual horizontal timeline of clipboard history (text, links, images, code, email, files)
+- Visual horizontal timeline of clipboard history (text, links, images, code, email)
 - **Keyboard-first**: the search field is always focused, so you just type to filter; ←/→ navigate the cards and Return pastes — no clicking, no lost first keystroke
 - Global hotkey (default `⇧⌘V`), re-recordable right from the menu-bar menu
 - **Space** peeks the selected card; tap the peek (or right-click **Preview**) to open a full-size inspect window with Keep-on-Top

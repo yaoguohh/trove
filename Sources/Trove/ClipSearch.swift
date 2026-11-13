@@ -16,14 +16,6 @@ enum ClipSearch {
     static func filter(_ items: [ClipboardItem], query: String, filter: ClipboardSearchFilter) -> [ClipboardItem] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         var candidates = items
-
-        switch filter.scope {
-        case .history:
-            break
-        case .pinned:
-            candidates = candidates.filter(\.isPinned)
-        }
-
         if let kind = filter.kind {
             candidates = candidates.filter { $0.kind == kind }
         }

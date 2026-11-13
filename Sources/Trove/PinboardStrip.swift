@@ -64,13 +64,7 @@ struct PinboardStrip: View {
             isSelected: model.filter.pinboardID == pinboard.id
         ) {
             // Toggle: clicking the selected pinboard again clears the filter (all history).
-            if model.filter.pinboardID == pinboard.id {
-                model.filter.scope = .history
-                model.filter.pinboardID = nil
-            } else {
-                model.filter.scope = .pinned
-                model.filter.pinboardID = pinboard.id
-            }
+            model.filter.pinboardID = model.filter.pinboardID == pinboard.id ? nil : pinboard.id
         }
         .frame(height: itemHeight)
         .contextMenu {
@@ -78,7 +72,6 @@ struct PinboardStrip: View {
                 store.deletePinboard(pinboard)
                 if model.filter.pinboardID == pinboard.id {
                     model.filter.pinboardID = nil
-                    model.filter.scope = .history
                 }
             }
         }

@@ -6,7 +6,6 @@ enum ClipboardKind: String, Codable, CaseIterable, Identifiable {
     case link
     case code
     case email
-    case file
     case image
 
     var id: String { rawValue }
@@ -17,7 +16,6 @@ enum ClipboardKind: String, Codable, CaseIterable, Identifiable {
         case .link: String(localized: "Link")
         case .code: String(localized: "Code")
         case .email: String(localized: "Email")
-        case .file: String(localized: "File")
         case .image: String(localized: "Image")
         }
     }
@@ -28,7 +26,6 @@ enum ClipboardKind: String, Codable, CaseIterable, Identifiable {
         case .link: "link"
         case .code: "chevron.left.forwardslash.chevron.right"
         case .email: "envelope"
-        case .file: "doc"
         case .image: "photo"
         }
     }
@@ -79,10 +76,9 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
     /// The clip's true source length in characters (== `characterCount` except for ceiling-truncated
     /// clips, where `characterCount` is also the original length so the footer stays honest).
     var originalCharacterCount: Int
-    /// When the clip was last PASTED from the panel; `nil` until it's used (and for any clip stored
-    /// before usage tracking shipped). Deliberately SEPARATE from `createdAt` — `createdAt` stays an
-    /// honest copy timestamp for the card's relative-time display, while `lastUsedAt` drives the
-    /// on-summon "pre-select the most-recently-used card" bias without ever reordering the timeline.
+    /// When the clip was last PASTED from the panel; `nil` until it's used. Deliberately SEPARATE from
+    /// `createdAt`, which stays an honest copy timestamp for the card's relative-time display.
+    /// Recorded for a future "most used" view; nothing reads it yet (see `ClipboardStore.recordUse`).
     var lastUsedAt: Date?
 
     /// Upper bound on the number of characters `preview` derives from the full text. A card only
@@ -181,7 +177,10 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
         thumbnailFileName = try container.decodeIfPresent(String.self, forKey: .thumbnailFileName)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         isPinned = try container.decode(Bool.self, forKey: .isPinned)
-        kind = try container.decodeIfPresent(ClipboardKind.self, forKey: .kind) ?? Self.detectKind(for: text)
+        // An unknown or missing kind (a removed case, a newer version's case) is re-detected rather
+        // than failing the whole document.
+        kind = try container.decodeIfPresent(String.self, forKey: .kind).flatMap(ClipboardKind.init(rawValue:))
+            ?? Self.detectKind(for: text)
         pinboardID = try container.decodeIfPresent(UUID.self, forKey: .pinboardID)
         title = try container.decodeIfPresent(String.self, forKey: .title)
         characterCount = try container.decodeIfPresent(Int.self, forKey: .characterCount) ?? text.count
@@ -199,6 +198,10 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
             if text == "Image" { text = "" }
             if title == "Image" { title = nil }
         }
+        // Version ≤ 2 marked any text starting with http(s) as a link, including paragraphs.
+        if kind == .link, !Self.isSingleURL(text) {
+            kind = Self.detectKind(for: text)
+        }
         let legacy = try decoder.container(keyedBy: LegacyCodingKeys.self)
         contentHash = try container.decodeIfPresent(String.self, forKey: .contentHash)
             ?? legacy.decodeIfPresent(String.self, forKey: .fullTextHash)
@@ -209,9 +212,20 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
         case fullTextHash
     }
 
+    /// A clip is a link only if it is one bare http(s) URL — no interior whitespace or newline, so a
+    /// paragraph that merely starts with a link is text. Bounded so it stays cheap on huge input.
+    /// The single definition of "link" for kind detection, capture and the inspect window.
+    static func isSingleURL(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 4_000 else { return false }
+        guard !trimmed.contains(where: { $0 == " " || $0 == "\n" || $0 == "\t" }) else { return false }
+        guard trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") else { return false }
+        return URL(string: trimmed) != nil
+    }
+
     static func detectKind(for text: String) -> ClipboardKind {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") {
+        if isSingleURL(trimmed) {
             return .link
         }
         if trimmed.contains("@"), trimmed.range(of: #"^\S+@\S+\.\S+$"#, options: .regularExpression) != nil {

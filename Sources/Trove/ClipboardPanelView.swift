@@ -117,7 +117,6 @@ struct ClipboardPanelView: View {
                 isActive: focus == .search,
                 focus: $focus,
                 activate: {
-                    model.filter.scope = .history
                     model.filter.pinboardID = nil
                 }
             )
