@@ -21,46 +21,48 @@ final class ClipboardStore: ObservableObject {
     /// History cap for unpinned clips (`AppSettings.maxItems`); pinned clips never age out.
     let maxItems: Int
 
+    /// Where this history's files live. The app uses `.live`; tests inject a temporary root.
+    let files: ClipFiles
     private let persistence: HistoryPersistence
-    private let managesSidecarFiles: Bool
-    private var isLoading = false
+    private let writer: HistoryWriter
     private var needsMigrationSave = false
-    private var saveGeneration = 0
+    /// Set when `history.json` exists but could not be read: saving would overwrite it with an empty
+    /// history, so nothing is written this session.
+    private var savingDisabled = false
 
     /// Cards removed by an explicit user delete, oldest-first; ⌘Z (`undoDelete`) pops the newest back.
     /// In-memory and session-scoped (NOT persisted) — undo recovers an accidental delete within the
     /// session, nothing more. Bounded by `maxUndoDepth` so a long deleting spree can't pin unbounded
     /// memory. `delete` DEFERS removing a clip's sidecar/image files to here: they're removed only when
     /// the clip is evicted past the cap (so until then an undo can restore it byte-for-byte); the
-    /// launch-time reconcile is the orphan backstop for anything an abrupt quit strands.
+    /// launch-time orphan sweep is the backstop for anything an abrupt quit strands.
     private var deletedUndoStack: [ClipboardItem] = []
     private let maxUndoDepth = 25
 
     /// Whether there's a deleted card to restore — drives the panel's ⌘Z gating.
     var canUndoDelete: Bool { !deletedUndoStack.isEmpty }
 
-    /// `storeURL` is injectable so tests can run against a temp file without
-    /// touching the user's real Application Support directory.
-    init(storeURL: URL? = nil, maxItems: Int = AppSettings.defaultMaxItems) {
-        managesSidecarFiles = (storeURL == nil)
-        persistence = HistoryPersistence(fileURL: storeURL ?? AppPaths.historyFileURL)
+    init(files: ClipFiles = .live, maxItems: Int = AppSettings.defaultMaxItems) {
+        self.files = files
+        persistence = HistoryPersistence(fileURL: files.historyFile)
+        writer = HistoryWriter(fileURL: files.historyFile)
         self.maxItems = maxItems
         load()
         if needsMigrationSave {
             scheduleSave()
         }
         ensureDefaultPinboards()
-        if managesSidecarFiles {
-            // Thumbnails count as referenced through `thumbnailFileName`.
-            HistoryPersistence.removeUnreferencedFiles(
-                in: AppPaths.imageDirectoryURL,
-                referenced: Set(items.compactMap(\.imageFileName) + items.compactMap(\.thumbnailFileName))
-            )
-            HistoryPersistence.removeUnreferencedFiles(
-                in: AppPaths.textDirectoryURL,
-                referenced: Set(items.compactMap(\.textFileName))
-            )
-        }
+        guard !savingDisabled else { return }
+        // Launch-time orphan sweep: files no clip references (a crash between a sidecar write and the
+        // history save, or deletes by older versions). Thumbnails count as referenced too.
+        HistoryPersistence.removeUnreferencedFiles(
+            in: files.imageDirectory,
+            referenced: Set(items.compactMap(\.imageFileName) + items.compactMap(\.thumbnailFileName))
+        )
+        HistoryPersistence.removeUnreferencedFiles(
+            in: files.textDirectory,
+            referenced: Set(items.compactMap(\.textFileName))
+        )
     }
 
     func add(text: String, sourceApp: String, sourceBundleIdentifier: String? = nil, sourceAppPath: String? = nil) {
@@ -145,24 +147,17 @@ final class ClipboardStore: ObservableObject {
             item.originalCharacterCount = text.count
         }
 
-        guard spills, managesSidecarFiles else {
-            // Small clip, or an injected/test store with no sidecar directory to own: keep the full
-            // text inline. Dedup works the same either way — it only compares `contentHash`.
-            return item
-        }
+        guard spills else { return item }
 
-        let fileName = "\(item.id.uuidString).txt"
         do {
-            try FileManager.default.createDirectory(at: ClipboardItem.textDirectoryURL, withIntermediateDirectories: true)
             // The sidecar is written SYNCHRONOUSLY and atomically BEFORE the item enters the array /
             // history.json. This is deliberate: it guarantees that whenever a persisted item references
-            // a sidecar, that sidecar exists on disk — so `fullText` (paste/copy/drag fidelity) never
+            // a sidecar, that sidecar exists on disk — so `ClipFiles.fullText` (paste/copy/drag) never
             // races a pending write, and a crash leaves at most an orphan .txt (swept by
             // the launch-time orphan sweep), never a dangling reference. The cost is a one-time O(n)
             // write proportional to clip size, on a deliberate copy of unusual (>20k-char) content —
             // acceptable, and unlike the old per-render hang it does not repeat.
-            try Data(storedText.utf8).write(to: ClipboardItem.textDirectoryURL.appendingPathComponent(fileName), options: .atomic)
-            item.textFileName = fileName
+            item.textFileName = try files.writeText(storedText, for: item.id)
             item.text = String(storedText.prefix(ClipboardItem.inlineTextCap))
         } catch {
             // Fall back to full inline so paste fidelity is never silently lost.
@@ -172,8 +167,7 @@ final class ClipboardStore: ObservableObject {
     }
 
     /// Synchronous image ingestion (PNG bytes): writes the image + thumbnail, then inserts. The live
-    /// monitor prefers `addPreparedImage` with files written off-main; this path serves tests and
-    /// callers that already hold the bytes on the main actor.
+    /// monitor uses `addPreparedImage` with files written off-main; this path serves tests.
     func addImage(
         data: Data,
         sourceApp: String,
@@ -181,18 +175,16 @@ final class ClipboardStore: ObservableObject {
         sourceAppPath: String? = nil
     ) {
         let id = UUID()
-        var files = ImageIngest.StoredFiles(imageFileName: ImageIngest.imageFileName(for: id), thumbnailFileName: nil)
-        if managesSidecarFiles {
-            do {
-                files = try ImageIngest.writeFiles(id: id, png: data, directory: ClipboardItem.imageDirectoryURL)
-            } catch {
-                Log.images.error("image save failed: \(error.localizedDescription, privacy: .public)")
-                return
-            }
+        let stored: ImageIngest.StoredFiles
+        do {
+            stored = try ImageIngest.writeFiles(id: id, png: data, directory: files.imageDirectory)
+        } catch {
+            Log.images.error("image save failed: \(error.localizedDescription, privacy: .public)")
+            return
         }
         addPreparedImage(
             id: id,
-            files: files,
+            files: stored,
             contentHash: ClipboardItem.hash(data),
             sourceApp: sourceApp,
             sourceBundleIdentifier: sourceBundleIdentifier,
@@ -228,7 +220,7 @@ final class ClipboardStore: ObservableObject {
         item.thumbnailFileName = files.thumbnailFileName
         var next = items
         if let existing = dedupIndex(contentHash: contentHash) {
-            Self.removeImageFile(for: item)
+            self.files.removeFiles(of: item)
             var kept = next.remove(at: existing)
             kept.createdAt = createdAt
             kept.sourceApp = sourceApp
@@ -246,13 +238,12 @@ final class ClipboardStore: ObservableObject {
     /// names and save once. Items whose original is already small point their thumbnail at the
     /// original so they are never re-examined.
     func backfillThumbnails() {
-        guard managesSidecarFiles else { return }
         let pending: [(id: UUID, url: URL)] = items.compactMap { item in
-            guard item.thumbnailFileName == nil, let url = item.imageFileURL else { return nil }
+            guard item.thumbnailFileName == nil, let url = files.imageURL(for: item) else { return nil }
             return (item.id, url)
         }
         guard !pending.isEmpty else { return }
-        let directory = ClipboardItem.imageDirectoryURL
+        let directory = files.imageDirectory
         // Main-actor task awaits the detached work; only the Sendable result crosses back, so no
         // reference to `self` is ever sent off the main actor (Swift 6.0 rejects that).
         Task { [weak self] in
@@ -302,7 +293,7 @@ final class ClipboardStore: ObservableObject {
     }
 
     func togglePin(_ item: ClipboardItem) {
-        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        guard let index = index(of: item) else { return }
         items[index].isPinned.toggle()
         if !items[index].isPinned {
             items[index].pinboardID = nil
@@ -312,7 +303,7 @@ final class ClipboardStore: ObservableObject {
     }
 
     func delete(_ item: ClipboardItem) {
-        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        guard let index = index(of: item) else { return }
         // Capture the store's canonical copy and push it to the undo stack. Its sidecar/image files are
         // intentionally NOT removed here — `pushUndo` removes them only on eviction, so ⌘Z can restore
         // the clip with full fidelity until then.
@@ -326,9 +317,7 @@ final class ClipboardStore: ObservableObject {
     private func pushUndo(_ item: ClipboardItem) {
         deletedUndoStack.append(item)
         while deletedUndoStack.count > maxUndoDepth {
-            let evicted = deletedUndoStack.removeFirst()
-            Self.removeImageFile(for: evicted)
-            Self.removeTextFile(for: evicted)
+            files.removeFiles(of: deletedUndoStack.removeFirst())
         }
     }
 
@@ -359,8 +348,7 @@ final class ClipboardStore: ObservableObject {
         // duplicate. Discard the stale undo entry and its now-redundant sidecar/image files, surfacing
         // the existing card instead — the same single-card-per-content guarantee `add` makes.
         if let existingIndex = dedupIndex(contentHash: item.contentHash) {
-            Self.removeImageFile(for: item)
-            Self.removeTextFile(for: item)
+            files.removeFiles(of: item)
             return items[existingIndex]
         }
 
@@ -371,7 +359,7 @@ final class ClipboardStore: ObservableObject {
     }
 
     func move(_ item: ClipboardItem, to pinboard: Pinboard?) {
-        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        guard let index = index(of: item) else { return }
         items[index].pinboardID = pinboard?.id
         items[index].isPinned = pinboard != nil
         sortForPins()
@@ -381,7 +369,7 @@ final class ClipboardStore: ObservableObject {
     /// Set or clear a clip's custom display name (shown in the card header; also searchable). An
     /// empty/nil name reverts the card to its kind label.
     func rename(_ item: ClipboardItem, to title: String?) {
-        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        guard let index = index(of: item) else { return }
         items[index].title = title
         scheduleSave()
     }
@@ -391,9 +379,9 @@ final class ClipboardStore: ObservableObject {
     /// does NOT `scheduleSave()`: persisting on every paste would re-encode the whole history document
     /// for a field no code consumes. The in-memory value is up to date for any same-session reader, and
     /// it is durably written by the next real mutation's save or the quit-time `flush()`. Operates on
-    /// metadata only — never reads `fullText`, never reorders the timeline.
+    /// metadata only — never reads the full text, never reorders the timeline.
     func recordUse(_ item: ClipboardItem) {
-        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        guard let index = index(of: item) else { return }
         items[index].lastUsedAt = Date()
     }
 
@@ -430,8 +418,7 @@ final class ClipboardStore: ObservableObject {
     func clearUnpinned() {
         let removed = items.filter { !$0.isPinned }
         items.removeAll { !$0.isPinned }
-        removed.forEach(Self.removeImageFile(for:))
-        removed.forEach(Self.removeTextFile(for:))
+        removed.forEach(files.removeFiles(of:))
         scheduleSave()
     }
 
@@ -441,13 +428,15 @@ final class ClipboardStore: ObservableObject {
         ClipSearch.filter(items, query: query, filter: filter)
     }
 
-    /// Synchronously writes pending changes. Call on app termination so a debounced
-    /// save in flight is never lost.
+    /// Synchronously writes the current history, superseding any pending debounced save. Called on
+    /// app termination so the last change is never lost.
     func flush() {
-        // Invalidate any pending debounced write (via generation bump), then write
-        // synchronously so the termination snapshot is the authoritative last write.
-        saveGeneration &+= 1
-        HistoryPersistence.write(currentDocument(), to: persistence.fileURL)
+        guard !savingDisabled else { return }
+        writer.flush(currentDocument())
+    }
+
+    private func index(of item: ClipboardItem) -> Int? {
+        items.firstIndex { $0.id == item.id }
     }
 
     nonisolated private static func sorted(_ items: [ClipboardItem]) -> [ClipboardItem] {
@@ -471,8 +460,7 @@ final class ClipboardStore: ObservableObject {
         let kept = Array(unpinned.prefix(keepCount))
         let dropped = Array(unpinned.dropFirst(keepCount))
         items = Self.sorted(pinned + kept)
-        dropped.forEach(Self.removeImageFile(for:))
-        dropped.forEach(Self.removeTextFile(for:))
+        dropped.forEach(files.removeFiles(of:))
         scheduleSave()
     }
 
@@ -482,29 +470,14 @@ final class ClipboardStore: ObservableObject {
         StoreDocument(items: items, pinboards: pinboards)
     }
 
-    /// Debounced, off-main persistence. Rapid clipboard activity coalesces into a
-    /// single background write instead of blocking the main actor on every change.
+    /// Debounced, off-main persistence: rapid clipboard activity coalesces into a single background
+    /// write instead of blocking the main actor on every change.
     private func scheduleSave() {
-        guard !isLoading else { return }
-        saveGeneration &+= 1
-        let generation = saveGeneration
-        let document = currentDocument()
-        let url = persistence.fileURL
-        // Task.detached's operation is @Sendable / non-isolated, so the write runs
-        // off the main actor without inheriting MainActor isolation (a DispatchWorkItem
-        // closure defined here would inherit it and trip the Swift 6 executor check).
-        Task.detached(priority: .utility) { [weak self] in
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            // Skip if a newer change or flush() superseded this debounced write.
-            if let self, await self.saveGeneration != generation { return }
-            HistoryPersistence.write(document, to: url)
-        }
+        guard !savingDisabled else { return }
+        writer.schedule(currentDocument())
     }
 
     private func load() {
-        isLoading = true
-        defer { isLoading = false }
-
         switch persistence.load() {
         case .document(let document):
             items = Self.sorted(document.items)
@@ -517,6 +490,8 @@ final class ClipboardStore: ObservableObject {
         case .missing, .corrupt:
             // Corrupt bytes were backed up by `HistoryPersistence`; start empty rather than wipe them.
             break
+        case .unreadable:
+            savingDisabled = true
         }
     }
 
@@ -528,20 +503,5 @@ final class ClipboardStore: ObservableObject {
             Pinboard(name: String(localized: "Code"), colorName: "purple")
         ]
         scheduleSave()
-    }
-
-    nonisolated static func removeImageFile(for item: ClipboardItem) {
-        if let url = item.imageFileURL {
-            try? FileManager.default.removeItem(at: url)
-        }
-        // A small image's thumbnail IS the image (same file); the second remove is a harmless no-op.
-        if let url = item.thumbnailFileURL {
-            try? FileManager.default.removeItem(at: url)
-        }
-    }
-
-    nonisolated static func removeTextFile(for item: ClipboardItem) {
-        guard let url = item.textFileURL else { return }
-        try? FileManager.default.removeItem(at: url)
     }
 }

@@ -76,7 +76,9 @@ struct PasteExecutionResult {
 final class PasteExecutor {
     static let shared = PasteExecutor()
 
-    func paste(item: ClipboardItem, target: PasteTargetSnapshot?) async -> PasteExecutionResult {
+    /// Delivers what is already on the pasteboard into `target`. `text` is the clip's full text, or nil
+    /// for an image (which can only arrive by ⌘V).
+    func paste(text: String?, target: PasteTargetSnapshot?) async -> PasteExecutionResult {
         guard isAccessibilityTrusted(promptIfNeeded: true) else {
             return PasteExecutionResult(
                 strategy: .pasteboardOnly,
@@ -85,8 +87,7 @@ final class PasteExecutor {
             )
         }
 
-        // Full text (sidecar-backed for big clips), read once. Images can't be AX-inserted.
-        let full = item.kind != .image ? item.fullText : nil
+        let full = text
 
         // Fast path: insert via the Accessibility API WITHOUT activating the target app. Activating an
         // app brings its windows forward — that's why a user with many browser windows sees the OTHER

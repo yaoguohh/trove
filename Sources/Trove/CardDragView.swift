@@ -3,6 +3,7 @@ import SwiftUI
 
 struct CardDragSurface: NSViewRepresentable {
     let item: ClipboardItem
+    @Environment(\.clipFiles) private var files
     let onClick: () -> Void
     let onDragStart: () -> Void
     let onSessionBegan: () -> Void
@@ -22,6 +23,7 @@ struct CardDragSurface: NSViewRepresentable {
 
     private func apply(to view: CardDragView) {
         view.item = item
+        view.files = files
         view.onClick = onClick
         view.onDragStart = onDragStart
         view.onSessionBegan = onSessionBegan
@@ -32,6 +34,7 @@ struct CardDragSurface: NSViewRepresentable {
 
 final class CardDragView: NSView, NSDraggingSource {
     var item: ClipboardItem?
+    var files = ClipFiles.live
     var onClick: (() -> Void)?
     var onDragStart: (() -> Void)?
     var onSessionBegan: (() -> Void)?
@@ -125,13 +128,11 @@ final class CardDragView: NSView, NSDraggingSource {
     }
 
     private func pasteboardWriter(for item: ClipboardItem) -> NSPasteboardWriting {
-        if item.kind == .image,
-           let url = item.imageFileURL,
-           let image = ImageCache.image(at: url) {
+        if item.kind == .image, let image = ImageCache.image(for: item, in: files) {
             return image
         }
         // Full text (sidecar-backed for big clips) so a dragged-out clip carries its complete content.
-        let full = item.fullText
+        let full = files.fullText(of: item)
         if item.kind == .link, let url = URL(string: full) {
             return url as NSURL
         }
@@ -139,7 +140,7 @@ final class CardDragView: NSView, NSDraggingSource {
     }
 
     private func previewImage(for item: ClipboardItem, size: CGSize) -> NSImage {
-        if item.kind == .image, let image = ImageCache.thumbnail(for: item) {
+        if item.kind == .image, let image = ImageCache.thumbnail(for: item, in: files) {
             return image
         }
 

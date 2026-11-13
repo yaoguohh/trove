@@ -2,12 +2,13 @@ import SwiftUI
 
 struct ImagePreview: View {
     let item: ClipboardItem
+    @Environment(\.clipFiles) private var files
 
     var body: some View {
         Group {
-            // The ≤640px thumbnail, never the original: a card is ~300pt wide, and decoding every
-            // screenshot at full size is what kept 66 MB of bitmaps resident while the panel was hidden.
-            if let image = ImageCache.thumbnail(for: item) {
+            // The thumbnail, never the original: a card is ~300pt wide, and decoding every screenshot
+            // at full size would keep tens of MB of bitmaps resident while the panel is hidden.
+            if let image = ImageCache.thumbnail(for: item, in: files) {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()

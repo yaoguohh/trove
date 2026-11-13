@@ -58,6 +58,7 @@ struct ClipboardPanelView: View {
                 }
         }
         .clipShape(RoundedRectangle(cornerRadius: ClipboardPanelController.cornerRadius, style: .continuous))
+        .environment(\.clipFiles, store.files)
         .onTapGesture {
             // Clicking empty panel chrome re-focuses the search field.
             focus = .search
@@ -449,6 +450,7 @@ struct ClipboardPanelView: View {
             renameFocus: $focus
         )
         .frame(width: metrics.width, height: metrics.height)
+        .environment(\.clipFiles, store.files)
         let renderer = ImageRenderer(content: card)
         renderer.scale = NSScreen.main?.backingScaleFactor ?? 2
         return renderer.nsImage

@@ -40,13 +40,21 @@ struct HistoryPersistence: Sendable {
         case legacy([ClipboardItem])
         /// Undecodable bytes; a backup copy was written beside the file so nothing is silently lost.
         case corrupt
+        /// The file exists but could not be read (permissions, I/O). The caller must not overwrite it.
+        case unreadable
     }
 
     let fileURL: URL
 
     func load() -> LoadResult {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return .missing }
-        guard let data = try? Data(contentsOf: fileURL) else { return .missing }
+        let data: Data
+        do {
+            data = try Data(contentsOf: fileURL)
+        } catch {
+            Log.store.error("history exists but could not be read; not saving this session: \(error.localizedDescription, privacy: .public)")
+            return .unreadable
+        }
         let decoder = JSONDecoder()
         if let document = try? decoder.decode(StoreDocument.self, from: data) {
             return .document(document)
@@ -59,7 +67,7 @@ struct HistoryPersistence: Sendable {
     }
 
     /// Atomic, pretty-printed write (the file is meant to stay human-readable). Safe to call from any
-    /// thread; `ClipboardStore.scheduleSave` runs it on a utility task.
+    /// thread; `HistoryWriter` runs it on its serial queue.
     static func write(_ document: StoreDocument, to url: URL) {
         do {
             let encoder = JSONEncoder()
@@ -94,5 +102,50 @@ struct HistoryPersistence: Sendable {
         } catch {
             Log.store.error("history could not be decoded and backup failed: \(error.localizedDescription, privacy: .public)")
         }
+    }
+}
+
+/// Serializes history writes. Debounced saves and the quit-time flush go through one serial queue,
+/// and a debounced write only lands if no newer save was requested after it was scheduled — so a
+/// stale document can never be written after a newer one (in particular, after `flush`).
+final class HistoryWriter: @unchecked Sendable {
+    /// How long rapid changes coalesce before one write.
+    static let debounce: TimeInterval = 0.3
+
+    private let fileURL: URL
+    private let queue = DispatchQueue(label: "io.github.yaoguohh.trove.history-writer", qos: .utility)
+    // Guarded by `lock`: bumped on the main actor, read on `queue`.
+    private let lock = NSLock()
+    private var generation = 0
+
+    init(fileURL: URL) {
+        self.fileURL = fileURL
+    }
+
+    func schedule(_ document: StoreDocument) {
+        let scheduled = bumpGeneration()
+        queue.asyncAfter(deadline: .now() + Self.debounce) { [self] in
+            guard currentGeneration() == scheduled else { return }
+            HistoryPersistence.write(document, to: fileURL)
+        }
+    }
+
+    /// Writes now and waits; any write still pending is superseded.
+    func flush(_ document: StoreDocument) {
+        _ = bumpGeneration()
+        queue.sync {
+            HistoryPersistence.write(document, to: fileURL)
+        }
+    }
+
+    private func bumpGeneration() -> Int {
+        lock.withLock {
+            generation &+= 1
+            return generation
+        }
+    }
+
+    private func currentGeneration() -> Int {
+        lock.withLock { generation }
     }
 }

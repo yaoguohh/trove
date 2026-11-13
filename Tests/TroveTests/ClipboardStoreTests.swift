@@ -9,7 +9,7 @@ private func makeTempStore() -> (ClipboardStore, URL) {
         .appendingPathComponent("TroveTests-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let url = dir.appendingPathComponent("history.json")
-    return (ClipboardStore(storeURL: url), url)
+    return (ClipboardStore(files: ClipFiles(root: url.deletingLastPathComponent())), url)
 }
 
 @MainActor
@@ -201,7 +201,7 @@ struct ClipboardStoreLoadTests {
         let corruptBytes = Data("this is not valid json".utf8)
         try corruptBytes.write(to: url)
 
-        _ = ClipboardStore(storeURL: url)
+        _ = ClipboardStore(files: ClipFiles(root: url.deletingLastPathComponent()))
 
         let siblings = try FileManager.default.contentsOfDirectory(atPath: dir.path)
         let backups = siblings.filter { $0.contains("corrupt") }
@@ -246,9 +246,7 @@ struct ContentSearchCapTests {
     }
 }
 
-// Note: an injected `storeURL` makes the store NOT manage sidecar files, so a big clip keeps its full
-// text INLINE. `fullText` therefore equals `text` here — the dedup/flag/migration logic is still fully
-// exercised; only the on-disk `.txt` spill is mode-gated off in tests.
+// Each test store owns a temporary root, so big clips really spill to `texts/` there.
 @MainActor
 struct ClipboardStoreSidecarTests {
     @Test func subThresholdStoresVerbatimNoSidecar() {
@@ -257,7 +255,7 @@ struct ClipboardStoreSidecarTests {
         let item = store.items[0]
         #expect(item.textFileName == nil)
         #expect(item.contentHash == ClipboardItem.textIdentity("small clip"))
-        #expect(item.fullText == "small clip")
+        #expect(store.files.fullText(of: item) == "small clip")
         #expect(item.isTruncated == false)
         #expect(item.characterCount == 10)
     }
@@ -267,7 +265,7 @@ struct ClipboardStoreSidecarTests {
         let original = ClipboardItem.ultimateSidecarCeiling + 100
         store.add(text: String(repeating: "a", count: original), sourceApp: "X")
         let item = store.items[0]
-        #expect(item.text.count == ClipboardItem.ultimateSidecarCeiling)
+        #expect(store.files.fullText(of: item).count == ClipboardItem.ultimateSidecarCeiling)
         #expect(item.isTruncated == true)
         #expect(item.originalCharacterCount == original)
         #expect(item.characterCount == original) // footer shows the TRUE source length
@@ -340,12 +338,12 @@ struct ClipboardItemMigrationTests {
         """
         try Data(legacy.utf8).write(to: url)
 
-        let store = ClipboardStore(storeURL: url)
+        let store = ClipboardStore(files: ClipFiles(root: url.deletingLastPathComponent()))
         #expect(store.items.count == 1)
         let item = store.items[0]
         #expect(item.text == "hello world")
-        #expect(item.hasSidecarText == false)
-        #expect(item.fullText == "hello world")
+        #expect(item.textFileName == nil)
+        #expect(store.files.fullText(of: item) == "hello world")
         #expect(item.isTruncated == false)
         #expect(item.originalCharacterCount == item.characterCount)
     }
@@ -367,7 +365,7 @@ struct ClipboardStoreUsageTests {
         store.recordUse(store.items[0])
         store.flush()
 
-        let reloaded = ClipboardStore(storeURL: url)
+        let reloaded = ClipboardStore(files: ClipFiles(root: url.deletingLastPathComponent()))
         #expect(reloaded.items.count == 1)
         #expect(reloaded.items[0].lastUsedAt != nil)
     }
@@ -384,7 +382,7 @@ struct ClipboardStoreUsageTests {
         """
         try Data(legacy.utf8).write(to: url)
 
-        let store = ClipboardStore(storeURL: url)
+        let store = ClipboardStore(files: ClipFiles(root: url.deletingLastPathComponent()))
         #expect(store.items.count == 1)
         #expect(store.items[0].lastUsedAt == nil)
     }
@@ -408,77 +406,122 @@ struct ClipboardFidelityTests {
         let (store, _) = makeTempStore()
         store.add(text: "verbatim paste fidelity", sourceApp: "X")
         let item = store.items[0]
-        #expect(item.fullText == item.text)
+        #expect(store.files.fullText(of: item) == item.text)
     }
 
     @Test func missingSidecarDegradesToInlinePrefix() {
         // A clip that claims a sidecar whose file is gone must NOT crash; fullText falls back to text.
+        let (store, _) = makeTempStore()
         var item = ClipboardItem(text: "inline prefix", sourceApp: "X")
         item.textFileName = "missing-\(UUID().uuidString).txt"
-        #expect(item.fullText == "inline prefix")
+        #expect(store.files.fullText(of: item) == "inline prefix")
     }
 
-    // The store's managed-mode write can't be driven hermetically (its sidecar dir is the global
-    // AppPaths one, and forcing managed mode would run reconcile against a real install). Instead this
-    // exercises the SAME round-trip at the item level: a real sidecar on disk (unique name + cleanup),
-    // read back through fullText, with the inline prefix kept distinct — the fidelity invariant that
-    // every >sidecarThreshold clip depends on.
     @Test func spilledClipRoundTripsFullTextFromSidecar() throws {
-        let dir = ClipboardItem.textDirectoryURL
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let name = "test-\(UUID().uuidString).txt"
-        let url = dir.appendingPathComponent(name)
+        let (store, _) = makeTempStore()
         let full = String(repeating: "Z", count: ClipboardItem.inlineTextCap + 5_000)
-        try Data(full.utf8).write(to: url, options: .atomic)
-        defer { try? FileManager.default.removeItem(at: url) }
+        store.add(text: full, sourceApp: "X")
+        let item = store.items[0]
 
-        var item = ClipboardItem(text: String(full.prefix(ClipboardItem.inlineTextCap)), sourceApp: "X")
-        item.textFileName = name
-
-        #expect(item.fullText == full)                            // reads the sidecar → full fidelity
-        #expect(item.text.count == ClipboardItem.inlineTextCap)   // inline keeps only the prefix
-        #expect(item.text != item.fullText)                       // the spilled-clip invariant
+        let sidecar = try #require(store.files.textURL(for: item))
+        #expect(FileManager.default.fileExists(atPath: sidecar.path))
+        #expect(store.files.fullText(of: item) == full)            // reads the sidecar → full fidelity
+        #expect(item.text.count == ClipboardItem.inlineTextCap)    // inline keeps only the prefix
 
         // The inspect-window bounded reader also pulls from the sidecar (FileHandle branch).
-        let bounded = PreviewWindowController.boundedBody(for: item)
+        let bounded = PreviewWindowController.boundedBody(for: item, in: store.files)
         #expect(bounded.text == full)        // 25k < 256KB budget → shown whole
         #expect(bounded.isClipped == false)
     }
 }
 
 @MainActor
+struct ClipboardStoreFileLifecycleTests {
+    @Test func launchSweepRemovesOrphanedFiles() throws {
+        let (store, url) = makeTempStore()
+        store.add(text: String(repeating: "k", count: ClipboardItem.sidecarThreshold + 1), sourceApp: "X")
+        store.flush()
+        let kept = try #require(store.files.textURL(for: store.items[0]))
+        let orphan = store.files.textDirectory.appendingPathComponent("orphan.txt")
+        try Data("x".utf8).write(to: orphan)
+
+        let reloaded = ClipboardStore(files: ClipFiles(root: url.deletingLastPathComponent()))
+
+        #expect(FileManager.default.fileExists(atPath: kept.path))
+        #expect(!FileManager.default.fileExists(atPath: orphan.path))
+        #expect(reloaded.items.count == 1)
+    }
+
+    @Test func deleteKeepsFilesUntilUndoIsNoLongerPossible() throws {
+        let (store, _) = makeTempStore()
+        store.addImage(data: Data("first png".utf8), sourceApp: "X")
+        let first = store.items[0]
+        let image = try #require(store.files.imageURL(for: first))
+        store.delete(first)
+        #expect(FileManager.default.fileExists(atPath: image.path))   // undo can still restore it
+
+        // Push the deleted clip past the undo depth.
+        for index in 0..<30 {
+            store.add(text: "filler \(index)", sourceApp: "X")
+            store.delete(store.items[0])
+        }
+        #expect(!FileManager.default.fileExists(atPath: image.path))
+    }
+
+    @Test func clearUnpinnedRemovesTheirFiles() throws {
+        let (store, _) = makeTempStore()
+        store.addImage(data: Data("png".utf8), sourceApp: "X")
+        let image = try #require(store.files.imageURL(for: store.items[0]))
+        store.clearUnpinned()
+        #expect(!FileManager.default.fileExists(atPath: image.path))
+    }
+
+    @Test func unreadableHistoryIsNeverOverwritten() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TroveTests-\(UUID().uuidString)", isDirectory: true)
+        // A directory where the file should be: it "exists" but can't be read as data.
+        let historyPath = dir.appendingPathComponent("history.json", isDirectory: true)
+        try FileManager.default.createDirectory(at: historyPath, withIntermediateDirectories: true)
+
+        let store = ClipboardStore(files: ClipFiles(root: dir))
+        store.add(text: "new", sourceApp: "X")
+        store.flush()
+
+        var isDirectory: ObjCBool = false
+        #expect(FileManager.default.fileExists(atPath: historyPath.path, isDirectory: &isDirectory))
+        #expect(isDirectory.boolValue)
+    }
+}
+
+@MainActor
 struct PreviewWindowBoundedBodyTests {
+    private let files = ClipFiles(root: FileManager.default.temporaryDirectory
+        .appendingPathComponent("TroveTests-\(UUID().uuidString)", isDirectory: true))
+
     @Test func inlineShortTextIsNotClipped() {
         let item = ClipboardItem(text: "short inline body", sourceApp: "X")
-        let result = PreviewWindowController.boundedBody(for: item)
+        let result = PreviewWindowController.boundedBody(for: item, in: files)
         #expect(result.text == "short inline body")
         #expect(result.isClipped == false)
     }
 
     @Test func missingSidecarDegradesToInlinePrefix() {
-        // textFileURL is non-nil but the file is gone → FileHandle open fails → inline-prefix branch.
+        // The sidecar path is set but the file is gone → FileHandle open fails → inline-prefix branch.
         var item = ClipboardItem(text: "inline only", sourceApp: "X")
         item.textFileName = "missing-\(UUID().uuidString).txt"
-        let result = PreviewWindowController.boundedBody(for: item)
+        let result = PreviewWindowController.boundedBody(for: item, in: files)
         #expect(result.text == "inline only")
         #expect(result.isClipped == false)
     }
 
     @Test func oversizeSidecarIsClippedAtScalarBoundary() throws {
-        let dir = ClipboardItem.textDirectoryURL
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let name = "test-\(UUID().uuidString).txt"
-        let url = dir.appendingPathComponent(name)
-        defer { try? FileManager.default.removeItem(at: url) }
         // Multi-byte scalars (3 bytes each) so the 256KB byte cut lands mid-scalar — exercises both
         // the clipped path and the trailing U+FFFD trim.
         let big = String(repeating: "界", count: 120_000) // 360,000 UTF-8 bytes > 262,144 cap
-        try Data(big.utf8).write(to: url, options: .atomic)
-
         var item = ClipboardItem(text: String(big.prefix(ClipboardItem.inlineTextCap)), sourceApp: "X")
-        item.textFileName = name
+        item.textFileName = try files.writeText(big, for: item.id)
 
-        let result = PreviewWindowController.boundedBody(for: item)
+        let result = PreviewWindowController.boundedBody(for: item, in: files)
         #expect(result.isClipped == true)
         #expect(result.text.utf8.count <= PreviewWindowController.previewWindowCap)
         #expect(!result.text.hasSuffix("\u{FFFD}")) // partial trailing scalar was trimmed
@@ -545,7 +588,7 @@ struct ClipboardStoreOrderInvariantTests {
             sourceApp: "X", sourceBundleIdentifier: nil, sourceAppPath: nil, createdAt: Date()
         )
         store.flush()
-        let reloaded = ClipboardStore(storeURL: url)
+        let reloaded = ClipboardStore(files: ClipFiles(root: url.deletingLastPathComponent()))
         #expect(reloaded.items.first?.thumbnailFileName == "a.thumb.png")
     }
 }
@@ -611,7 +654,7 @@ struct ClipboardStoreContentIdentityTests {
         """
         try Data(legacy.utf8).write(to: url)
 
-        let store = ClipboardStore(storeURL: url)
+        let store = ClipboardStore(files: ClipFiles(root: url.deletingLastPathComponent()))
         let image = try #require(store.items.first { $0.kind == .image })
         #expect(image.text.isEmpty)
         #expect(image.title == nil)

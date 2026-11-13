@@ -18,8 +18,8 @@ final class ClipboardPanelController {
     // (and dismissal) never depend on the search field still holding SwiftUI focus.
     private var keyMonitor: Any?
     private let model: PanelViewModel
-    private lazy var previewController = PreviewWindowController()
-    private lazy var quickLook = QuickLookBubbleController()
+    private lazy var previewController = PreviewWindowController(files: store.files)
+    private lazy var quickLook = QuickLookBubbleController(files: store.files)
     /// True while the animated drawer-collapse hide is in flight, so a second dismissal can't re-enter
     /// it and capture the half-collapsed frame as its startFrame.
     private var isHiding = false

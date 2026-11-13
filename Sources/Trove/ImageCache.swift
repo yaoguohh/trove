@@ -20,23 +20,22 @@ enum ImageCache {
 
     /// The card-sized rendition: the item's thumbnail, else (legacy items awaiting backfill, or a
     /// failed thumbnail) the original.
-    static func thumbnail(for item: ClipboardItem) -> NSImage? {
-        if let url = item.thumbnailFileURL {
+    static func thumbnail(for item: ClipboardItem, in files: ClipFiles) -> NSImage? {
+        if let url = files.thumbnailURL(for: item) {
             return cached(url, in: thumbnails)
         }
-        guard let url = item.imageFileURL else { return nil }
-        return cached(url, in: fullImages)
+        return image(for: item, in: files)
+    }
+
+    /// The full-resolution image (peek, inspect window, drag-out).
+    static func image(for item: ClipboardItem, in files: ClipFiles) -> NSImage? {
+        files.imageURL(for: item).flatMap { cached($0, in: fullImages) }
     }
 
     /// A small decorative image (a link's favicon). Kept with the thumbnails so it survives hide/show
     /// instead of being decoded again on every summon.
     static func icon(at url: URL) -> NSImage? {
         cached(url, in: thumbnails)
-    }
-
-    /// The full-resolution image (peek, inspect window, drag-out).
-    static func image(at url: URL) -> NSImage? {
-        cached(url, in: fullImages)
     }
 
     /// Drop every full-size decode. Called when the panel hides; thumbnails stay.

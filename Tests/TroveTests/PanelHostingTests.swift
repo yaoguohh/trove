@@ -69,7 +69,7 @@ struct PanelHostingTests {
     private func makePanel() -> (ClipboardPanelController, URL) {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("TrovePanelTests-\(UUID().uuidString)")
-        let store = ClipboardStore(storeURL: directory.appendingPathComponent("history.json"))
+        let store = ClipboardStore(files: ClipFiles(root: directory))
         store.add(text: "Panel lifecycle fixture", sourceApp: "Test")
         return (ClipboardPanelController(store: store, monitor: ClipboardMonitor(store: store)), directory)
     }

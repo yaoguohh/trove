@@ -12,6 +12,11 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
     /// Open windows are retained here (not via `isReleasedWhenClosed`) so multiple previews can
     /// coexist; each is dropped on `windowWillClose`.
     private var windows: Set<NSWindow> = []
+    private let files: ClipFiles
+
+    init(files: ClipFiles) {
+        self.files = files
+    }
 
     /// UTF-8 byte budget for the inspect window's plain-text `ScrollView`, which lays out the WHOLE
     /// string (SwiftUI `Text` has no viewport virtualization). The window shows the full clip up to
@@ -24,11 +29,11 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
     /// (up-to-ceiling) clip just to show the first 256KB. Resolve this ONCE on the explicit open action
     /// (`show`), never inside a SwiftUI body. A spilled clip whose sidecar is missing degrades to its
     /// inline prefix.
-    static func boundedBody(for item: ClipboardItem) -> (text: String, isClipped: Bool) {
+    static func boundedBody(for item: ClipboardItem, in files: ClipFiles) -> (text: String, isClipped: Bool) {
         let budget = previewWindowCap
         let head: Data
         let hasMore: Bool
-        if let url = item.textFileURL, let handle = try? FileHandle(forReadingFrom: url) {
+        if let url = files.textURL(for: item), let handle = try? FileHandle(forReadingFrom: url) {
             defer { try? handle.close() }
             let data = (try? handle.read(upToCount: budget + 1)) ?? Data()
             hasMore = data.count > budget
@@ -47,9 +52,7 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
     }
 
     func show(_ item: ClipboardItem, near screen: NSScreen?) {
-        let image: NSImage? = item.kind == .image
-            ? item.imageFileURL.flatMap { ImageCache.image(at: $0) }
-            : nil
+        let image: NSImage? = item.kind == .image ? ImageCache.image(for: item, in: files) : nil
         let visible = (screen ?? NSScreen.main ?? NSScreen.screens.first)?.visibleFrame
             ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let size = Self.contentSize(for: item, image: image, in: visible)
@@ -76,7 +79,7 @@ final class PreviewWindowController: NSObject, NSWindowDelegate {
         // Resolve the bounded plain-text body HERE — on the explicit open action — so the bounded
         // sidecar read happens once off the SwiftUI body (which can re-evaluate many times). Only the
         // plain-text branch needs it; image/link/json branches ignore it.
-        let plainBody = item.kind == .image ? nil : Self.boundedBody(for: item)
+        let plainBody = item.kind == .image ? nil : Self.boundedBody(for: item, in: files)
         let hosting = NSHostingController(rootView: ClipPreviewView(item: item, image: image, plainBody: plainBody))
         // Drop `.intrinsicContentSize` so a `maxWidth/Height: .infinity` root fills the window
         // instead of collapsing to its intrinsic size (the frame-less-Form blank-window pitfall).

@@ -132,41 +132,6 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
         hash(Data(text.trimmingCharacters(in: .whitespacesAndNewlines).utf8))
     }
 
-    /// Resident decoded full-text bound (mirrors `ImageCache`). Path-keyed; each entry charged its
-    /// UTF-8 byte size, so the cache self-bounds and a single oversized read can't pin more than the
-    /// ceiling. `@MainActor` because `fullText` (its only user) is main-actor-isolated.
-    @MainActor private static let fullTextCache: NSCache<NSString, NSString> = {
-        let cache = NSCache<NSString, NSString>()
-        cache.totalCostLimit = 32 * 1024 * 1024
-        return cache
-    }()
-
-    var textFileURL: URL? {
-        textFileName.map { Self.textDirectoryURL.appendingPathComponent($0) }
-    }
-
-    var hasSidecarText: Bool { textFileName != nil }
-
-    /// The FULL verbatim text, for the three fidelity consumers only (ClipboardMonitor.copy,
-    /// PasteExecutor.paste, CardDragView.pasteboardWriter) and the inspect window. For sub-threshold
-    /// clips this is just `text` (no IO). For spilled clips it does cached disk IO and degrades to the
-    /// inline prefix if the sidecar is missing. MUST NOT be called from a SwiftUI body or per-keystroke
-    /// search — those use `text`/`preview` (the bounded inline prefix).
-    @MainActor
-    var fullText: String {
-        guard let url = textFileURL else { return text }
-        let key = url.path as NSString
-        if let cached = Self.fullTextCache.object(forKey: key) { return cached as String }
-        guard let loaded = try? String(contentsOf: url, encoding: .utf8) else {
-            Log.store.error("full-text sidecar unreadable (\(url.lastPathComponent, privacy: .public)); pasting the inline prefix only")
-            // Memoize the fallback so a degraded clip doesn't re-stat + re-log on every paste/drag.
-            Self.fullTextCache.setObject(text as NSString, forKey: key, cost: text.utf8.count)
-            return text
-        }
-        Self.fullTextCache.setObject(loaded as NSString, forKey: key, cost: loaded.utf8.count)
-        return loaded
-    }
-
     init(
         id: UUID = UUID(),
         text: String,
@@ -242,24 +207,6 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
 
     private enum LegacyCodingKeys: String, CodingKey {
         case fullTextHash
-    }
-
-    var imageFileURL: URL? {
-        guard let imageFileName else { return nil }
-        return Self.imageDirectoryURL.appendingPathComponent(imageFileName)
-    }
-
-    var thumbnailFileURL: URL? {
-        guard let thumbnailFileName else { return nil }
-        return Self.imageDirectoryURL.appendingPathComponent(thumbnailFileName)
-    }
-
-    static var imageDirectoryURL: URL {
-        AppPaths.imageDirectoryURL
-    }
-
-    static var textDirectoryURL: URL {
-        AppPaths.textDirectoryURL
     }
 
     static func detectKind(for text: String) -> ClipboardKind {

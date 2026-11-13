@@ -10,6 +10,7 @@ import SwiftUI
 /// full-size right-click "Preview" (PreviewWindowController) window for closer inspection.
 @MainActor
 final class QuickLookBubbleController {
+    private let files: ClipFiles
     private var window: NSPanel?
     /// Bumped on every present so the (persistent) bubble view replays its popIn.
     private let popState = BubblePopState()
@@ -28,6 +29,10 @@ final class QuickLookBubbleController {
     static let contentInset: CGFloat = 14
     /// Gap between the tail tip and the panel's top edge.
     static let gap: CGFloat = 6
+
+    init(files: ClipFiles) {
+        self.files = files
+    }
     /// Max characters the peek bubble measures and renders. The bubble is a transient glance — the
     /// full content lives in the inspect window — so capping both the `boundingRect` measure and the
     /// `Text` layout keeps a multi-MB clip from being laid out just to peek at its first lines.
@@ -84,6 +89,7 @@ final class QuickLookBubbleController {
             rootView: QuickLookBubbleView(model: model, pop: popState, expand: { [weak self] item in
                 self?.expandTapped(item)
             })
+            .environment(\.clipFiles, files)
         )
         hosting.sizingOptions = []
         let panel = NSPanel(
@@ -126,7 +132,7 @@ final class QuickLookBubbleController {
         let maxContentW = maxBubbleW - Self.contentInset * 2
         let maxContentH = maxBubbleH - Self.contentInset * 2 - Self.tailHeight
 
-        let content = Self.bubbleSize(for: item, maxContentW: maxContentW, maxContentH: maxContentH)
+        let content = Self.bubbleSize(for: item, files: files, maxContentW: maxContentW, maxContentH: maxContentH)
         let winW = content.width + margin * 2
         let winH = content.height + margin * 2
 
@@ -144,15 +150,14 @@ final class QuickLookBubbleController {
     /// Snug size of the bubble body (including the tail), excluding the shadow margin. Scales the
     /// content up to the given caps (images aspect-fit, never upscaled past 1:1); mirrors the
     /// padding used in `QuickLookBubbleView` so the rendered content fills it exactly.
-    static func bubbleSize(for item: ClipboardItem, maxContentW: CGFloat, maxContentH: CGFloat) -> NSSize {
+    static func bubbleSize(for item: ClipboardItem, files: ClipFiles, maxContentW: CGFloat, maxContentH: CGFloat) -> NSSize {
         let inset = contentInset
         func wrap(_ w: CGFloat, _ h: CGFloat) -> NSSize {
             NSSize(width: w + inset * 2, height: h + inset * 2 + tailHeight)
         }
 
         if item.kind == .image {
-            if let url = item.imageFileURL,
-               let image = ImageCache.image(at: url),
+            if let image = ImageCache.image(for: item, in: files),
                image.size.width > 0, image.size.height > 0 {
                 let scale = min(maxContentW / image.size.width, maxContentH / image.size.height, 1.0)
                 // Floors stop a tiny image becoming a sliver; the outer min() re-clamps to the caps
@@ -187,6 +192,7 @@ final class BubblePopState: ObservableObject {
 }
 
 private struct QuickLookBubbleView: View {
+    @Environment(\.clipFiles) private var files
     @ObservedObject var model: PanelViewModel
     @ObservedObject var pop: BubblePopState
     let expand: (ClipboardItem) -> Void
@@ -247,7 +253,7 @@ private struct QuickLookBubbleView: View {
 
     @ViewBuilder
     private func content(for item: ClipboardItem) -> some View {
-        if item.kind == .image, let url = item.imageFileURL, let image = ImageCache.image(at: url) {
+        if item.kind == .image, let image = ImageCache.image(for: item, in: files) {
             Image(nsImage: image)
                 .resizable()
                 .interpolation(.high)

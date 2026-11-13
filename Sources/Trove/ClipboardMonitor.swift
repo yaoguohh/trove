@@ -39,7 +39,7 @@ final class ClipboardMonitor {
 
     func copy(_ item: ClipboardItem) {
         pasteboard.clearContents()
-        if item.kind == .image, let url = item.imageFileURL, let png = try? Data(contentsOf: url) {
+        if item.kind == .image, let url = store.files.imageURL(for: item), let png = try? Data(contentsOf: url) {
             // The stored PNG bytes go back verbatim: no decode, no TIFF→PNG round trip. The owner
             // supplies a TIFF only if a consumer asks for one. poll() recognises the echo by comparing
             // these exact bytes.
@@ -52,7 +52,7 @@ final class ClipboardMonitor {
             // The FULL text (sidecar-backed for big clips). Both the pasteboard write AND the
             // echo-suppression record must use the same full string, or poll() would see the written
             // content as "new" (the inline prefix != full) and re-ingest the clip on every select.
-            let full = item.fullText
+            let full = store.files.fullText(of: item)
             lastTextWrittenByApp = full
             pasteboard.setString(full, forType: .string)
         }
@@ -66,8 +66,9 @@ final class ClipboardMonitor {
         // write, so a use never re-enters add(); recordUse only stamps lastUsedAt for the summon bias.
         store.recordUse(item)
 
+        let text = item.kind == .image ? nil : store.files.fullText(of: item)
         Task { @MainActor in
-            let result = await PasteExecutor.shared.paste(item: item, target: targetSnapshot)
+            let result = await PasteExecutor.shared.paste(text: text, target: targetSnapshot)
             Log.paste.debug("paste via \(result.strategy.rawValue, privacy: .public) success=\(result.success)")
             clearPasteTarget()
         }
@@ -142,7 +143,7 @@ final class ClipboardMonitor {
         }
         let id = UUID()
         let capturedAt = Date()
-        let directory = ClipboardItem.imageDirectoryURL
+        let directory = store.files.imageDirectory
         let store = self.store
         Task.detached(priority: .userInitiated) {
             guard let png = ImageIngest.pngData(from: payload) else {
