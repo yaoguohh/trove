@@ -228,10 +228,12 @@ final class ClipboardStore: ObservableObject {
         commit(next)
     }
 
-    /// One-time migration for image clips stored before thumbnails existed: generate each missing
+    /// One-time migration for image clips stored before thumbnails existed (v1.1.x): generate each missing
     /// thumbnail on a utility task (ImageIO downsampling, ~20–130ms per image), then record the file
     /// names and save once. Items whose original is already small point their thumbnail at the
     /// original so they are never re-examined.
+    /// TODO(v1.5): remove, with its launch-time call in AppDelegate, once upgrades straight from v1.1.x
+    /// are no longer expected.
     func backfillThumbnails() {
         let pending: [(id: UUID, url: URL)] = items.compactMap { item in
             guard item.thumbnailFileName == nil, let url = files.imageURL(for: item) else { return nil }
@@ -369,17 +371,6 @@ final class ClipboardStore: ObservableObject {
         scheduleSave()
     }
 
-    /// Record that a clip was just pasted from the panel by stamping `lastUsedAt`. This is currently
-    /// kept as raw data for a future opt-in "Most Used" mode — nothing reads it yet — so it deliberately
-    /// does NOT `scheduleSave()`: persisting on every paste would re-encode the whole history document
-    /// for a field no code consumes. The in-memory value is up to date for any same-session reader, and
-    /// it is durably written by the next real mutation's save or the quit-time `flush()`. Operates on
-    /// metadata only — never reads the full text, never reorders the timeline.
-    func recordUse(_ item: ClipboardItem) {
-        guard let index = index(of: item) else { return }
-        items[index].lastUsedAt = Date()
-    }
-
     func createPinboard(named name: String, colorName: String = "blue") {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -479,9 +470,6 @@ final class ClipboardStore: ObservableObject {
             pinboards = document.pinboards
             // Items migrate while decoding; write the upgraded document back so it happens once.
             needsMigrationSave = document.version < StoreDocument.currentVersion
-        case .legacy(let legacyItems):
-            items = Self.sorted(legacyItems)
-            needsMigrationSave = true
         case .missing, .corrupt:
             // Corrupt bytes were backed up by `HistoryPersistence`; start empty rather than wipe them.
             break

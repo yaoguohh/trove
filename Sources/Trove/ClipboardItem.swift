@@ -31,17 +31,17 @@ enum ClipboardKind: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// A named group of pinned clips. Pinboards are ordered by their position in the store's array.
 struct Pinboard: Identifiable, Codable, Equatable, Sendable {
     var id: UUID
     var name: String
+    /// A `PinboardColor` name, stored by name so the hues can change without migrating data.
     var colorName: String
-    var createdAt: Date
 
-    init(id: UUID = UUID(), name: String, colorName: String, createdAt: Date = Date()) {
+    init(id: UUID = UUID(), name: String, colorName: String) {
         self.id = id
         self.name = name
         self.colorName = colorName
-        self.createdAt = createdAt
     }
 }
 
@@ -76,10 +76,6 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
     /// The clip's true source length in characters (== `characterCount` except for ceiling-truncated
     /// clips, where `characterCount` is also the original length so the footer stays honest).
     var originalCharacterCount: Int
-    /// When the clip was last PASTED from the panel; `nil` until it's used. Deliberately SEPARATE from
-    /// `createdAt`, which stays an honest copy timestamp for the card's relative-time display.
-    /// Recorded for a future "most used" view; nothing reads it yet (see `ClipboardStore.recordUse`).
-    var lastUsedAt: Date?
 
     /// Upper bound on the number of characters `preview` derives from the full text. A card only
     /// shows a handful of lines, so capping the SOURCE keeps `preview` (and everything downstream of
@@ -162,7 +158,6 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
         self.contentHash = contentHash ?? (kind == .image ? nil : Self.textIdentity(text))
         self.isTruncated = false
         self.originalCharacterCount = self.characterCount
-        self.lastUsedAt = nil
     }
 
     init(from decoder: Decoder) throws {
@@ -173,39 +168,36 @@ struct ClipboardItem: Identifiable, Codable, Equatable, Sendable {
         sourceBundleIdentifier = try container.decodeIfPresent(String.self, forKey: .sourceBundleIdentifier)
         sourceAppPath = try container.decodeIfPresent(String.self, forKey: .sourceAppPath)
         imageFileName = try container.decodeIfPresent(String.self, forKey: .imageFileName)
-        // Pre-thumbnail history lacks this key → nil, backfilled at launch.
         thumbnailFileName = try container.decodeIfPresent(String.self, forKey: .thumbnailFileName)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         isPinned = try container.decode(Bool.self, forKey: .isPinned)
-        // An unknown or missing kind (a removed case, a newer version's case) is re-detected rather
-        // than failing the whole document.
-        kind = try container.decodeIfPresent(String.self, forKey: .kind).flatMap(ClipboardKind.init(rawValue:))
+        // A kind this version doesn't know (a removed case, or one from a newer version) is
+        // re-detected rather than failing the whole document.
+        kind = ClipboardKind(rawValue: try container.decode(String.self, forKey: .kind))
             ?? Self.detectKind(for: text)
         pinboardID = try container.decodeIfPresent(UUID.self, forKey: .pinboardID)
         title = try container.decodeIfPresent(String.self, forKey: .title)
-        characterCount = try container.decodeIfPresent(Int.self, forKey: .characterCount) ?? text.count
-        // Forward-compatible: pre-sidecar history.json lacks these keys → fully-inline defaults.
+        characterCount = try container.decode(Int.self, forKey: .characterCount)
         textFileName = try container.decodeIfPresent(String.self, forKey: .textFileName)
-        isTruncated = try container.decodeIfPresent(Bool.self, forKey: .isTruncated) ?? false
-        originalCharacterCount = try container.decodeIfPresent(Int.self, forKey: .originalCharacterCount) ?? characterCount
-        // Forward-compatible: documents written before usage tracking lack this key → nil (never used).
-        lastUsedAt = try container.decodeIfPresent(Date.self, forKey: .lastUsedAt)
+        isTruncated = try container.decode(Bool.self, forKey: .isTruncated)
+        originalCharacterCount = try container.decode(Int.self, forKey: .originalCharacterCount)
 
-        // Version-1 documents (see `StoreDocument.currentVersion`): image clips carried the English
-        // placeholder "Image" as both content and title, and only sidecar-spilled text clips had an
-        // identity (as `fullTextHash`). Migrate here; the store writes the upgraded document back.
+        // Migrations from earlier document versions (see `StoreDocument.currentVersion`); the store
+        // writes the upgraded document back once.
+        // Version 1: image clips carried the English placeholder "Image" as content and title, and
+        // only sidecar-spilled text clips had an identity (as `fullTextHash`).
         if kind == .image {
             if text == "Image" { text = "" }
             if title == "Image" { title = nil }
-        }
-        // Version ≤ 2 marked any text starting with http(s) as a link, including paragraphs.
-        if kind == .link, !Self.isSingleURL(text) {
-            kind = Self.detectKind(for: text)
         }
         let legacy = try decoder.container(keyedBy: LegacyCodingKeys.self)
         contentHash = try container.decodeIfPresent(String.self, forKey: .contentHash)
             ?? legacy.decodeIfPresent(String.self, forKey: .fullTextHash)
             ?? (kind == .image ? nil : Self.textIdentity(text))
+        // Version 2 and earlier marked any text starting with http(s) as a link, including paragraphs.
+        if kind == .link, !Self.isSingleURL(text) {
+            kind = Self.detectKind(for: text)
+        }
     }
 
     private enum LegacyCodingKeys: String, CodingKey {

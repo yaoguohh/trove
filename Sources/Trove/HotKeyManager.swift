@@ -4,20 +4,8 @@ import Carbon
 struct HotKeyShortcut: Codable, Equatable {
     var keyCode: UInt32
     var carbonModifiers: UInt32
-    /// Persisted for compatibility with earlier releases; the UI renders `symbols`.
-    var displayName: String
 
-    static let defaultShowPanel = HotKeyShortcut(
-        keyCode: UInt32(kVK_ANSI_V),
-        carbonModifiers: UInt32(cmdKey | shiftKey),
-        displayName: "⇧⌘V"
-    )
-
-    init(keyCode: UInt32, carbonModifiers: UInt32, displayName: String) {
-        self.keyCode = keyCode
-        self.carbonModifiers = carbonModifiers
-        self.displayName = displayName
-    }
+    static let defaultShowPanel = HotKeyShortcut(keyCode: UInt32(kVK_ANSI_V), carbonModifiers: UInt32(cmdKey | shiftKey))
 
     /// Ordered key-cap symbols (⌃ ⌥ ⇧ ⌘ then the key) for a badge-style display.
     @MainActor
@@ -26,13 +14,15 @@ struct HotKeyShortcut: Codable, Equatable {
     }
 
     /// The shortcut a key press in the recorder describes; nil without at least one modifier.
-    @MainActor
+    init(keyCode: UInt32, carbonModifiers: UInt32) {
+        self.keyCode = keyCode
+        self.carbonModifiers = carbonModifiers
+    }
+
     init?(event: NSEvent) {
         let carbonModifiers = ModifierKey.carbon(from: event.modifierFlags)
         guard carbonModifiers != 0 else { return nil }
-        let keyCode = UInt32(event.keyCode)
-        let symbols = ModifierKey.symbols(carbon: carbonModifiers) + [KeyCodeNames.symbol(for: keyCode)]
-        self.init(keyCode: keyCode, carbonModifiers: carbonModifiers, displayName: symbols.joined())
+        self.init(keyCode: UInt32(event.keyCode), carbonModifiers: carbonModifiers)
     }
 }
 

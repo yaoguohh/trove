@@ -2,7 +2,6 @@ import Foundation
 import ImageIO
 
 struct LinkMetadata: Codable, Equatable {
-    var url: String
     var title: String?
     var host: String
     /// Final response port, when explicit. Optional so metadata cached by older releases still decodes.
@@ -223,7 +222,6 @@ final class LinkMetadataProvider {
             let iconFileName = await fetchIcon(from: iconURL, key: key)
 
             return LinkMetadata(
-                url: url.absoluteString,
                 title: title.map(decodeHTMLEntities),
                 host: baseURL.host() ?? url.host() ?? url.absoluteString,
                 port: baseURL.port,
@@ -239,7 +237,6 @@ final class LinkMetadataProvider {
     /// result expires (`isStale`) instead of sticking forever.
     private nonisolated static func fallbackMetadata(for url: URL) -> LinkMetadata {
         LinkMetadata(
-            url: url.absoluteString,
             title: nil,
             host: url.host() ?? url.absoluteString,
             port: url.port,

@@ -14,7 +14,7 @@ struct LinkCardTextTests {
         port metaPort: Int? = nil
     ) -> LinkCardText {
         let metadata = (title != nil || metaHost != nil || metaPort != nil)
-            ? LinkMetadata(url: url, title: title, host: metaHost ?? "", port: metaPort, iconFileName: nil)
+            ? LinkMetadata(title: title, host: metaHost ?? "", port: metaPort, iconFileName: nil)
             : nil
         return LinkCardText.make(rawURL: url, metadata: metadata)
     }

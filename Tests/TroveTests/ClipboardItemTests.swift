@@ -35,8 +35,8 @@ struct ClipboardItemKindTests {
 
     @Test func unknownOrStaleKindsAreRedetectedOnDecode() throws {
         let json = """
-        [{"id":"\(UUID().uuidString)","text":"plain words","sourceApp":"X","createdAt":0,"isPinned":false,"kind":"file"},\
-        {"id":"\(UUID().uuidString)","text":"https://x.com and more","sourceApp":"X","createdAt":0,"isPinned":false,"kind":"link"}]
+        [{"id":"\(UUID().uuidString)","text":"plain words","sourceApp":"X","createdAt":0,"isPinned":false,"kind":"file","characterCount":0,"isTruncated":false,"originalCharacterCount":0},\
+        {"id":"\(UUID().uuidString)","text":"https://x.com and more","sourceApp":"X","createdAt":0,"isPinned":false,"kind":"link","characterCount":0,"isTruncated":false,"originalCharacterCount":0}]
         """
         let items = try JSONDecoder().decode([ClipboardItem].self, from: Data(json.utf8))
         #expect(items.map(\.kind) == [.text, .text])

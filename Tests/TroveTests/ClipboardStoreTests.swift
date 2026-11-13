@@ -325,82 +325,6 @@ struct ClipboardItemImageTests {
 }
 
 @MainActor
-struct ClipboardItemMigrationTests {
-    @Test func legacyJSONDecodesWithoutNewKeys() throws {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("TroveTests-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let url = dir.appendingPathComponent("history.json")
-        // A pre-sidecar document: items carry NONE of textFileName/contentHash/isTruncated/
-        // originalCharacterCount. createdAt is the default deferred-to-date Double form.
-        let legacy = """
-        {"items":[{"id":"\(UUID().uuidString)","text":"hello world","sourceApp":"Safari","createdAt":700000000,"isPinned":false,"kind":"text","characterCount":11}],"pinboards":[]}
-        """
-        try Data(legacy.utf8).write(to: url)
-
-        let store = ClipboardStore(files: ClipFiles(root: url.deletingLastPathComponent()))
-        #expect(store.items.count == 1)
-        let item = store.items[0]
-        #expect(item.text == "hello world")
-        #expect(item.textFileName == nil)
-        #expect(store.files.fullText(of: item) == "hello world")
-        #expect(item.isTruncated == false)
-        #expect(item.originalCharacterCount == item.characterCount)
-    }
-}
-
-@MainActor
-struct ClipboardStoreUsageTests {
-    @Test func recordUseStampsLastUsedAt() {
-        let (store, _) = makeTempStore()
-        store.add(text: "a", sourceApp: "X")
-        #expect(store.items[0].lastUsedAt == nil)   // never used yet
-        store.recordUse(store.items[0])
-        #expect(store.items[0].lastUsedAt != nil)   // now stamped
-    }
-
-    @Test func recordUsePersistsAcrossReload() {
-        let (store, url) = makeTempStore()
-        store.add(text: "a", sourceApp: "X")
-        store.recordUse(store.items[0])
-        store.flush()
-
-        let reloaded = ClipboardStore(files: ClipFiles(root: url.deletingLastPathComponent()))
-        #expect(reloaded.items.count == 1)
-        #expect(reloaded.items[0].lastUsedAt != nil)
-    }
-
-    @Test func legacyDocDecodesLastUsedAtAsNil() throws {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("TroveTests-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let url = dir.appendingPathComponent("history.json")
-        // A document lacking the lastUsedAt key (everything shipped before usage tracking) must
-        // decode cleanly with lastUsedAt == nil — the same forward-compat contract as the sidecar keys.
-        let legacy = """
-        {"items":[{"id":"\(UUID().uuidString)","text":"hi","sourceApp":"Safari","createdAt":700000000,"isPinned":false,"kind":"text","characterCount":2}],"pinboards":[]}
-        """
-        try Data(legacy.utf8).write(to: url)
-
-        let store = ClipboardStore(files: ClipFiles(root: url.deletingLastPathComponent()))
-        #expect(store.items.count == 1)
-        #expect(store.items[0].lastUsedAt == nil)
-    }
-
-    @Test func undoDeletePreservesLastUsedAt() {
-        let (store, _) = makeTempStore()
-        store.add(text: "a", sourceApp: "X")
-        store.recordUse(store.items[0])
-        let used = store.items[0]
-        store.delete(used)
-
-        let restored = store.undoDelete()
-        #expect(restored?.lastUsedAt == used.lastUsedAt)
-        #expect(restored?.lastUsedAt != nil)
-    }
-}
-
-@MainActor
 struct ClipboardFidelityTests {
     @Test func fullTextEqualsInlineForSubThreshold() {
         let (store, _) = makeTempStore()
@@ -647,9 +571,9 @@ struct ClipboardStoreContentIdentityTests {
         let url = dir.appendingPathComponent("history.json")
         let legacy = """
         {"items":[\
-        {"id":"\(UUID().uuidString)","text":"Image","title":"Image","sourceApp":"X","createdAt":700000002,"isPinned":false,"kind":"image","imageFileName":"a.png","characterCount":0},\
-        {"id":"\(UUID().uuidString)","text":" hi ","sourceApp":"X","createdAt":700000001,"isPinned":false,"kind":"text","characterCount":4},\
-        {"id":"\(UUID().uuidString)","text":"big prefix","sourceApp":"X","createdAt":700000000,"isPinned":false,"kind":"text","characterCount":30000,"textFileName":"b.txt","fullTextHash":"legacyhash"}\
+        {"id":"\(UUID().uuidString)","text":"Image","title":"Image","sourceApp":"X","createdAt":700000002,"isPinned":false,"kind":"image","imageFileName":"a.png","characterCount":0,"isTruncated":false,"originalCharacterCount":0},\
+        {"id":"\(UUID().uuidString)","text":" hi ","sourceApp":"X","createdAt":700000001,"isPinned":false,"kind":"text","characterCount":4,"isTruncated":false,"originalCharacterCount":4},\
+        {"id":"\(UUID().uuidString)","text":"big prefix","sourceApp":"X","createdAt":700000000,"isPinned":false,"kind":"text","characterCount":30000,"textFileName":"b.txt","fullTextHash":"legacyhash","isTruncated":false,"originalCharacterCount":30000}\
         ],"pinboards":[]}
         """
         try Data(legacy.utf8).write(to: url)

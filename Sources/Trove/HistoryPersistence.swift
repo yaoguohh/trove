@@ -37,8 +37,6 @@ struct HistoryPersistence: Sendable {
         /// No file yet (first launch).
         case missing
         case document(StoreDocument)
-        /// The pre-pinboard format: a bare array of items.
-        case legacy([ClipboardItem])
         /// Undecodable bytes; a backup copy was written beside the file so nothing is silently lost.
         case corrupt
         /// The file exists but could not be read (permissions, I/O). The caller must not overwrite it.
@@ -59,9 +57,6 @@ struct HistoryPersistence: Sendable {
         let decoder = JSONDecoder()
         if let document = try? decoder.decode(StoreDocument.self, from: data) {
             return .document(document)
-        }
-        if let legacy = try? decoder.decode([ClipboardItem].self, from: data) {
-            return .legacy(legacy)
         }
         backupCorruptFile(data: data)
         return .corrupt

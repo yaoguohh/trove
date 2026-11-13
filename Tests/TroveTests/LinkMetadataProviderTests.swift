@@ -88,7 +88,7 @@ struct SSRFAddressClassificationTests {
 
 struct LinkMetadataNegativeCacheTests {
     private func empty(fetchedAt: Date?) -> LinkMetadata {
-        LinkMetadata(url: "https://example.com", title: nil, host: "example.com", port: nil, iconFileName: nil, fetchedAt: fetchedAt)
+        LinkMetadata(title: nil, host: "example.com", port: nil, iconFileName: nil, fetchedAt: fetchedAt)
     }
 
     @Test func emptyRecordExpiresAfterTheTTL() {

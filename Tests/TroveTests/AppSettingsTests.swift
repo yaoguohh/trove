@@ -32,7 +32,7 @@ struct AppSettingsTests {
     @Test func changesPersist() {
         let defaults = freshDefaults()
         let settings = AppSettings(defaults: defaults)
-        let shortcut = HotKeyShortcut(keyCode: 9, carbonModifiers: 256, displayName: "⌘V")
+        let shortcut = HotKeyShortcut(keyCode: 9, carbonModifiers: 256)
         settings.shortcut = shortcut
         settings.linkPreviews = true
         settings.runInBackground = false

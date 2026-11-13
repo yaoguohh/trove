@@ -41,13 +41,12 @@ final class ClipPasteboard {
         monitor.acknowledgeOwnWrite()
     }
 
-    /// Copy, then deliver into the remembered target. The single hook for every paste from the
-    /// panel (Return, click), so it also records the use.
+    /// Copy, then deliver into the remembered target. The single path for every paste from the
+    /// panel (Return, click).
     func paste(_ item: ClipboardItem) {
         let target = pasteTarget
         pasteTarget = nil
         copy(item)
-        store.recordUse(item)
 
         let text = item.kind == .image ? nil : store.files.fullText(of: item)
         Task {

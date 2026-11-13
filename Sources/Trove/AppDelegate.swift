@@ -54,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureMenuBar()
 
         // Image clips stored before thumbnails existed get theirs generated once, off-main, after the
-        // launch path has settled.
+        // launch path has settled. TODO(v1.5): remove with `ClipboardStore.backfillThumbnails`.
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
             self?.store.backfillThumbnails()
         }
