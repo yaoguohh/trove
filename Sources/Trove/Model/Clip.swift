@@ -52,7 +52,7 @@ struct Clip: Identifiable, Codable, Equatable, Sendable {
     var sourceBundleIdentifier: String?
     var sourceAppPath: String?
     var imageFileName: String?
-    /// Card-sized rendition of an image clip (`ImageIngest.thumbnailMaxPixelSize`). Equal to `imageFileName`
+    /// Card-sized rendition of an image clip (`ImageFiles.thumbnailMaxPixelSize`). Equal to `imageFileName`
     /// when the original is already small; nil for legacy items until `backfillThumbnails` runs.
     var thumbnailFileName: String?
     var createdAt: Date

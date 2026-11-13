@@ -361,7 +361,7 @@ struct ClipStoreOrderInvariantTests {
 
         store.addPreparedImage(
             id: UUID(),
-            files: ImageIngest.StoredFiles(imageFileName: "x.png", thumbnailFileName: nil),
+            files: ImageFiles.StoredFiles(imageFileName: "x.png", thumbnailFileName: nil),
             contentHash: "x",
             sourceApp: "X", sourceBundleIdentifier: nil, sourceAppPath: nil, createdAt: Date()
         )
@@ -375,7 +375,7 @@ struct ClipStoreOrderInvariantTests {
         // The image finished encoding after the text arrived, but was captured before it.
         store.addPreparedImage(
             id: UUID(),
-            files: ImageIngest.StoredFiles(imageFileName: "shot.png", thumbnailFileName: "shot.thumb.png"),
+            files: ImageFiles.StoredFiles(imageFileName: "shot.png", thumbnailFileName: "shot.thumb.png"),
             contentHash: "shot",
             sourceApp: "X", sourceBundleIdentifier: nil, sourceAppPath: nil, createdAt: captured
         )
@@ -387,7 +387,7 @@ struct ClipStoreOrderInvariantTests {
         let (store, url) = makeTempStore()
         store.addPreparedImage(
             id: UUID(),
-            files: ImageIngest.StoredFiles(imageFileName: "a.png", thumbnailFileName: "a.thumb.png"),
+            files: ImageFiles.StoredFiles(imageFileName: "a.png", thumbnailFileName: "a.thumb.png"),
             contentHash: "a",
             sourceApp: "X", sourceBundleIdentifier: nil, sourceAppPath: nil, createdAt: Date()
         )

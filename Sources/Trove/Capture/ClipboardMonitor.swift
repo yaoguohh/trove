@@ -101,9 +101,9 @@ final class ClipboardMonitor {
                 return
             }
             let contentHash = Clip.hash(png)
-            let files: ImageIngest.StoredFiles
+            let files: ImageFiles.StoredFiles
             do {
-                files = try ImageIngest.writeFiles(id: id, png: png, directory: directory)
+                files = try ImageFiles.writeFiles(id: id, png: png, directory: directory)
             } catch {
                 Log.images.error("image save failed: \(error.localizedDescription, privacy: .public)")
                 return

@@ -163,9 +163,9 @@ final class ClipStore: ObservableObject {
         sourceAppPath: String? = nil
     ) {
         let id = UUID()
-        let stored: ImageIngest.StoredFiles
+        let stored: ImageFiles.StoredFiles
         do {
-            stored = try ImageIngest.writeFiles(id: id, png: data, directory: files.imageDirectory)
+            stored = try ImageFiles.writeFiles(id: id, png: data, directory: files.imageDirectory)
         } catch {
             Log.images.error("image save failed: \(error.localizedDescription, privacy: .public)")
             return
@@ -187,7 +187,7 @@ final class ClipStore: ObservableObject {
     /// re-copy of an image already in history moves that card up and drops the just-written files.
     func addPreparedImage(
         id: UUID,
-        files: ImageIngest.StoredFiles,
+        files: ImageFiles.StoredFiles,
         contentHash: String,
         sourceApp: String,
         sourceBundleIdentifier: String?,
@@ -251,9 +251,9 @@ final class ClipStore: ObservableObject {
             var resolved: [(id: UUID, thumbnailFileName: String)] = []
             for entry in pending {
                 guard let png = try? Data(contentsOf: entry.url) else { continue }   // missing file: leave it
-                switch ImageIngest.thumbnail(from: png) {
+                switch ImageFiles.thumbnail(from: png) {
                 case .generated(let data):
-                    let name = ImageIngest.thumbnailFileName(for: entry.id)
+                    let name = ImageFiles.thumbnailFileName(for: entry.id)
                     guard (try? data.write(to: directory.appendingPathComponent(name), options: .atomic)) != nil else { continue }
                     resolved.append((entry.id, name))
                 case .notNeeded:

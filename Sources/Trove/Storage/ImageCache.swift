@@ -4,7 +4,7 @@ import AppKit
 /// PNG on every render (hover/selection animations re-evaluate bodies constantly).
 ///
 /// Two tiers, because they have different lifetimes:
-/// - `thumbnails` backs the cards. Thumbnails are small (`ImageIngest.thumbnailMaxPixelSize`), so even a full strip
+/// - `thumbnails` backs the cards. Thumbnails are small (`ImageFiles.thumbnailMaxPixelSize`), so even a full strip
 ///   of image cards decodes to a few MB; this tier survives hide/show so re-summoning is instant.
 /// - `fullImages` backs the peek bubble, the inspector and drag-out. A single 4K screenshot
 ///   decodes to 33 MB, so this tier is purged whenever the panel hides — the footprint of a
