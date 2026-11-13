@@ -231,12 +231,10 @@ private struct ClipCardHeader: View {
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: metrics.cornerRadius, topTrailingRadius: metrics.cornerRadius))
     }
 
-    /// The source app's own hues, kept as Trove's one multi-hue element (it identifies the card's
-    /// origin at a glance) but calmed from 26/12/3% to 18/8/0% so the ember accent stays in charge.
+    /// The source app's own hues, Trove's one multi-hue element (it identifies the card's origin at a
+    /// glance), kept faint (`Theme.Tint.headerWash`) so the ember accent stays in charge.
     private var gradientColors: [Color] {
-        let topOpacity = 0.18
-        let midOpacity = 0.08
-        let tailOpacity = 0.0
+        let (topOpacity, midOpacity, tailOpacity) = Theme.Tint.headerWash
         let colors = Array(accentPalette.prefix(3))
 
         switch colors.count {

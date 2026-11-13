@@ -43,6 +43,8 @@ enum Theme {
     enum Tint {
         static let fill = 0.16
         static let hairline = 0.22
+        /// The card header's wash of the source app's colors, fading out across the header.
+        static let headerWash: (top: Double, middle: Double, tail: Double) = (0.18, 0.08, 0)
     }
 
     /// The one accent. Used at fixed alpha steps for fills and rings; never a second brand hue.
