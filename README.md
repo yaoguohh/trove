@@ -68,8 +68,8 @@ its own connection and they never get quarantined, so Gatekeeper won't prompt ag
 Trove asks for two permissions; the menu-bar menu shows a warning row while either is missing:
 
 - **Accessibility** (System Settings → Privacy & Security → Accessibility) lets Trove put the clip
-  you choose into the app you were in — inserted directly where possible, with `⌘V` as the
-  fallback. Without it, choosing a clip only copies it to the clipboard.
+  you choose into the app you were in, by sending it `⌘V`. Without it, choosing a clip only copies
+  it to the clipboard.
 - **Pasteboard access** (macOS 15.4 and later): in System Settings → Privacy & Security, set
   Trove to **Always Allow**, or macOS asks every time Trove records a copy — and Trove records
   nothing when it is set to Deny. The menu-bar menu's **Allow Clipboard Access…** row opens that page.

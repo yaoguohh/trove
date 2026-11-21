@@ -3,6 +3,23 @@ import Testing
 import CoreFoundation
 
 struct PasteExecutorTests {
+    // The usual case: the panel never took activation, so the target is still frontmost. Text goes by
+    // ⌘V — Chromium/Electron fields report success for an Accessibility write without writing anything.
+    @Test func frontmostTargetGetsTextByKeystroke() {
+        #expect(!PasteExecutor.triesAccessibilityFirst(hasText: true, targetIsFrontmost: true))
+    }
+
+    // Trove is active (the inspector is open): ⌘V would need the target activated, which raises its
+    // windows, so Accessibility insertion is tried first.
+    @Test func backgroundTargetGetsTextByAccessibilityFirst() {
+        #expect(PasteExecutor.triesAccessibilityFirst(hasText: true, targetIsFrontmost: false))
+    }
+
+    @Test func imagesAlwaysGoByKeystroke() {
+        #expect(!PasteExecutor.triesAccessibilityFirst(hasText: false, targetIsFrontmost: false))
+        #expect(!PasteExecutor.triesAccessibilityFirst(hasText: false, targetIsFrontmost: true))
+    }
+
     @Test func replacesCollapsedRangeAtCursor() {
         let result = PasteExecutor.replacingText(
             in: "Hello world",

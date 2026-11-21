@@ -29,22 +29,10 @@ final class PasteExecutor {
             )
         }
 
-        let full = text
-
-        // Fast path: insert via the Accessibility API WITHOUT activating the target app. Activating an
-        // app brings its windows forward — that's why a user with many browser windows sees the OTHER
-        // ones jump to the top after a paste. AX text insertion into the captured focused element does
-        // not need the app frontmost, so try it first; on success, window order is never touched. Only
-        // when AX can't insert (notably secure password fields) do we fall back to activating + Cmd+V.
-        if let target, target.isFresh, let full,
-           let result = accessibilityInsert(full, into: target) {
-            return result
-        }
-
         guard let target, target.isFresh else {
-            // Fallback (no fresh AX target). The panel was ordered out before paste, but
+            // Fallback (no fresh target). The panel was ordered out before paste, but
             // Trove can still be the active app, so a blind Cmd+V would land on nothing.
-            // Hand focus off first — symmetric with the success path's bringTargetToFront.
+            // Hand focus off first.
             if let target {
                 await bringTargetToFront(target)
             } else {
@@ -53,20 +41,30 @@ final class PasteExecutor {
             return keystrokeResult(target: "the frontmost app (no fresh target snapshot)")
         }
 
-        // AX insertion didn't take while the target was in the background — secure password fields (and
-        // some browser web content) only accept it, if at all, when frontmost. Bring the target forward
-        // (front-window-only, so the app's OTHER windows are not raised) and retry AX before the Cmd+V
-        // keystroke fallback.
-        await bringTargetToFront(target)
-
-        if let full, let result = accessibilityInsert(full, into: target) {
+        let targetIsFrontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier == target.processIdentifier
+        if Self.triesAccessibilityFirst(hasText: text != nil, targetIsFrontmost: targetIsFrontmost),
+           let text, let result = await accessibilityInsert(text, into: target) {
             return result
         }
 
+        // Front-window-only, so the app's OTHER windows are not raised; a no-op for window order when the
+        // target is already frontmost.
+        await bringTargetToFront(target)
         return keystrokeResult(target: target.localizedName)
     }
 
-    /// Last resort: synthesize ⌘V into whatever is frontmost now.
+    /// Whether to try Accessibility insertion before ⌘V. Only when the target is NOT frontmost (Trove
+    /// itself became active, e.g. the inspector is open): reaching it by ⌘V would mean activating it,
+    /// and activation raises the app's windows; AX insertion doesn't need it frontmost. In the usual
+    /// case the panel never took activation (ADR 0003), the target is still frontmost, and ⌘V — the
+    /// app's own paste, with its undo and editor handling — reaches it with no window raised. AX there
+    /// would gain nothing and is unreliable: Chromium/Electron text areas report success for
+    /// AXSelectedText without writing anything.
+    nonisolated static func triesAccessibilityFirst(hasText: Bool, targetIsFrontmost: Bool) -> Bool {
+        hasText && !targetIsFrontmost
+    }
+
+    /// Synthesize ⌘V into whatever is frontmost now.
     private func keystrokeResult(target: String) -> PasteExecutionResult {
         let sent = sendPasteKeystroke()
         return PasteExecutionResult(
@@ -79,18 +77,26 @@ final class PasteExecutor {
     }
 
     /// Insert `full` into the target's focused element via Accessibility, returning a successful result
-    /// or nil if there's no focused element / AX couldn't insert (the caller then escalates). Critically,
-    /// this does NOT activate the app or change window order — that's why it's tried before
-    /// `bringTargetToFront`, so a successful paste leaves the user's other windows untouched.
-    private func accessibilityInsert(_ full: String, into target: PasteTargetSnapshot) -> PasteExecutionResult? {
+    /// or nil if there's no focused element / AX couldn't insert (the caller then escalates). It does NOT
+    /// activate the app or change window order.
+    ///
+    /// A write counts only once the field's value has actually changed: the AX success code alone is not
+    /// proof (Chromium/Electron return success for AXSelectedText and write nothing). A field whose value
+    /// can't be read can't be checked, so it isn't written to at all — the ⌘V fallback then can't paste
+    /// on top of a write that did land.
+    private func accessibilityInsert(_ full: String, into target: PasteTargetSnapshot) async -> PasteExecutionResult? {
         guard let element = target.resolvedFocusedElement() else {
             debugLog("Trove AX paste skipped for \(target.localizedName): no focused element")
+            return nil
+        }
+        guard let before = stringValue(of: element) else {
+            debugLog("Trove AX paste skipped for \(target.localizedName): value is unreadable, a write could not be verified")
             return nil
         }
         // Prefer replacing the current selection (AXSelectedText) over rewriting the entire field value
         // (AXValue), which is heavier and can clobber rich formatting in capable text controls.
         let selectedTextResult = insertViaSelectedText(full, into: element)
-        if selectedTextResult == .success {
+        if selectedTextResult == .success, await valueChanged(of: element, from: before) {
             return PasteExecutionResult(
                 strategy: .accessibilitySelectedText,
                 success: true,
@@ -98,8 +104,8 @@ final class PasteExecutor {
             )
         }
 
-        let valueRangeResult = insertViaValueRange(full, into: element)
-        if valueRangeResult == .success {
+        let valueRangeResult = insertViaValueRange(full, into: element, currentValue: before)
+        if valueRangeResult == .success, await valueChanged(of: element, from: before) {
             return PasteExecutionResult(
                 strategy: .accessibilityValueRange,
                 success: true,
@@ -107,16 +113,34 @@ final class PasteExecutor {
             )
         }
 
-        debugLog("Trove AX paste failed for \(target.localizedName): selectedText=\(selectedTextResult.rawValue), valueRange=\(valueRangeResult.rawValue)")
+        debugLog("Trove AX paste failed for \(target.localizedName): selectedText=\(selectedTextResult.rawValue), valueRange=\(valueRangeResult.rawValue) (success without a value change counts as failed)")
         return nil
+    }
+
+    /// Whether the element's value differs from `before`, re-read a few times over ~150 ms for apps that
+    /// apply an AX write a moment later. Replacing a selection with identical text reads as unchanged;
+    /// the ⌘V fallback then writes the same text again, so the result is the same.
+    private func valueChanged(of element: AXUIElement, from before: String) async -> Bool {
+        for attempt in 0..<4 {
+            if attempt > 0 { try? await Task.sleep(nanoseconds: 50_000_000) }
+            if let now = stringValue(of: element), now != before { return true }
+        }
+        return false
+    }
+
+    private func stringValue(of element: AXUIElement) -> String? {
+        var valueRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &valueRef) == .success else {
+            return nil
+        }
+        return valueRef as? String
     }
 
     private func bringTargetToFront(_ target: PasteTargetSnapshot) async {
         // NSRunningApplication.activate(options:[]) has a Big-Sur-onward regression: it raises ALL of
         // the app's windows (as if .activateAllWindows were always set) instead of just the main/key
         // window. That is what makes a user's OTHER browser windows jump to the top when Trove must
-        // activate to deliver a Cmd+V — the password-field path, where AX text insertion is blocked by
-        // the secure field. Use the Carbon Process Manager's front-window-only activation, which makes
+        // activate to deliver a Cmd+V. Use the Carbon Process Manager's front-window-only activation, which makes
         // the app key for keyboard input but raises ONLY its frontmost window — the documented community
         // workaround for this exact bug. (Setting the app-level kAXFrontmostAttribute has the same
         // raise-everything side effect, so it isn't used.) Falls back to NSRunningApplication if unavailable.
@@ -175,15 +199,9 @@ final class PasteExecutor {
         )
     }
 
-    private func insertViaValueRange(_ text: String, into element: AXUIElement) -> AXError {
+    private func insertViaValueRange(_ text: String, into element: AXUIElement, currentValue: String) -> AXError {
         guard isAttributeSettable(kAXValueAttribute as CFString, in: element) else {
             return .attributeUnsupported
-        }
-
-        var valueRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &valueRef) == .success,
-              let currentValue = valueRef as? String else {
-            return .noValue
         }
 
         let selectedRange = selectedTextRange(in: element) ?? CFRange(location: currentValue.utf16.count, length: 0)

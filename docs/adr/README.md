@@ -8,7 +8,7 @@
 | [0001](0001-free-distribution.md) | 免费分发：ad-hoc 签名、不公证、Sparkle 自动更新 |
 | [0002](0002-dark-only-anthracite.md) | 视觉：只有深色，anthracite 令牌，Theme 是唯一来源 |
 | [0003](0003-non-activating-panel.md) | 面板：不抢激活的悬浮面板，按键在窗口级统一路由 |
-| [0004](0004-paste-strategy.md) | 粘贴：先用辅助功能直接插入，其次只抬前窗，最后合成 ⌘V |
+| [0004](0004-paste-strategy.md) | 粘贴：先用辅助功能直接插入，其次只抬前窗，最后合成 ⌘V（已被 0013 取代） |
 | [0005](0005-storage.md) | 存储：单个 JSON 文档加 sidecar 文件，按内容身份去重 |
 | [0006](0006-capture-rules.md) | 捕获：轮询 changeCount，文本优先，敏感内容在读取前跳过 |
 | [0007](0007-link-previews.md) | 链接预览：自行抓取页面头部，默认关闭 |
@@ -17,6 +17,7 @@
 | [0010](0010-undoable-delete.md) | 删除可撤销，清空历史需要确认 |
 | [0011](0011-peek-and-inspector.md) | 预览分两种：一次性的 Peek 和独立的 Inspector；单个链接交给浏览器 |
 | [0012](0012-unmount-hidden-panel.md) | 面板隐藏时卸载内容，释放原图缓存 |
+| [0013](0013-paste-keystroke-first.md) | 粘贴：目标在前台时直接发 ⌘V，辅助功能插入只在目标不在前台时用，并读回核对 |
 
 ## 新增一篇
 

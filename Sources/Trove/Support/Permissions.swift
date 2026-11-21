@@ -1,7 +1,7 @@
 import AppKit
 
-/// Accessibility lets Trove insert text into the app it pastes into (and, as a fallback, post ⌘V).
-/// Without it a paste only puts the clip on the pasteboard.
+/// Accessibility lets Trove post ⌘V into the app it pastes into (and insert text there directly when
+/// that app isn't frontmost). Without it a paste only puts the clip on the pasteboard.
 enum AccessibilityPermission {
     static var isTrusted: Bool {
         AXIsProcessTrusted()

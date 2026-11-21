@@ -97,8 +97,8 @@ Links、SourceApp、Hotkey ─▶ Support、Design、Model
 4. 键盘事件由面板窗口级的本地监听统一接收，经纯函数 `PanelKeyEvent.decode` 与
    `PanelKeyboard.intent` 决定意图；可打印字符交给搜索框。
 5. 回车或点击卡片：面板立即隐藏，`ClipPasteboard.paste` 把内容写回剪贴板（并告知 `ClipboardMonitor`
-   这是自己写的），再由 `PasteExecutor` 送进粘贴目标：先用辅助功能接口直接插入；不行就只抬起目标的
-   前窗再试一次；最后合成 ⌘V。
+   这是自己写的），再由 `PasteExecutor` 送进粘贴目标：目标仍在前台时只抬它的前窗并合成 ⌘V；目标不在前台
+   时先用辅助功能接口插入并读回核对，没写进去再走 ⌘V（ADR 0013）。
 
 ## 并发
 
