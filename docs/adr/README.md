@@ -16,9 +16,10 @@
 | [0009](0009-status-menu.md) | 设置放在状态菜单里，状态菜单是无边框面板 |
 | [0010](0010-undoable-delete.md) | 删除可撤销，清空历史需要确认 |
 | [0011](0011-peek-and-inspector.md) | 预览分两种：一次性的 Peek 和独立的 Inspector；单个链接交给浏览器 |
-| [0012](0012-unmount-hidden-panel.md) | 面板隐藏时卸载内容，释放原图缓存 |
+| [0012](0012-unmount-hidden-panel.md) | 面板隐藏时卸载内容，释放原图缓存（已被 0015 取代） |
 | [0013](0013-paste-keystroke-first.md) | 粘贴：目标在前台时直接发 ⌘V，辅助功能插入只在目标不在前台时用，并读回核对 |
 | [0014](0014-permission-guide.md) | 权限引导：欢迎窗口加 PermissionFlow 拖拽浮窗，不再弹系统授权框 |
+| [0015](0015-keep-panel-mounted.md) | 面板内容常驻：隐藏时不卸载，弹入动画交给 Core Animation，卡片时间不再逐秒刷新 |
 
 ## 新增一篇
 

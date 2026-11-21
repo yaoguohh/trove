@@ -44,8 +44,9 @@ final class CardDragView: NSView, NSDraggingSource {
     private var mouseDownEvent: NSEvent?
     private var mouseDownPoint = NSPoint.zero
     private var draggingDidBegin = false
-    // Hiding the panel unmounts SwiftUI and releases this NSView. Keep the drag source
-    // alive until AppKit delivers the end callback (including an Esc cancellation).
+    // SwiftUI may release this NSView mid-drag (the panel hides at drag start and the lazy row can
+    // drop the card). Keep the drag source alive until AppKit delivers the end callback (including an
+    // Esc cancellation).
     private var activeDragSource: CardDragView?
     /// Whether the panel was already key when the press began. A click that merely re-focuses the
     /// panel — dismissing a context menu, returning from a preview — must NOT also paste.

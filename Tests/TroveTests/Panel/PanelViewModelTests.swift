@@ -113,3 +113,46 @@ struct PanelViewModelActionTests {
         #expect(model.selectedID == loose.id)
     }
 }
+
+@MainActor
+struct PanelViewModelPresentationTests {
+    // While the panel is hidden a copy only marks the result stale; the next show brings it in and
+    // selects it.
+    @Test func historyChangesWhileHiddenArriveOnTheNextShow() {
+        let model = makeModel(itemCount: 2)
+        model.prepareForShow()
+        model.didHide()
+
+        model.store.add(text: "copied-while-hidden", sourceApp: "Test")
+        #expect(model.filteredItems.count == 2)
+
+        model.prepareForShow()
+        #expect(model.filteredItems.count == 3)
+        #expect(model.filteredItems.first?.text == "copied-while-hidden")
+        #expect(model.selectedID == model.filteredItems.first?.id)
+    }
+
+    // A show that moves the selection asks the view to jump (once); one that doesn't, doesn't.
+    @Test func showJumpsOnlyWhenItMovesTheSelection() {
+        let model = makeModel(itemCount: 3)
+        model.prepareForShow()
+        #expect(model.consumeJumpToSelection())
+        #expect(!model.consumeJumpToSelection())
+
+        model.moveSelection(by: 2)
+        model.prepareForShow()
+        #expect(model.consumeJumpToSelection())
+
+        model.prepareForShow()
+        #expect(!model.consumeJumpToSelection())
+    }
+
+    @Test func eachShowAdvancesTheTimeReference() async throws {
+        let model = makeModel(itemCount: 1)
+        model.prepareForShow()
+        let first = model.shownAt
+        try await Task.sleep(for: .milliseconds(5))
+        model.prepareForShow()
+        #expect(model.shownAt > first)
+    }
+}

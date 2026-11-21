@@ -17,6 +17,8 @@ struct ClipCard: View {
     var onCancelRename: () -> Void = {}
     /// The shared single focus authority; this card's editor is `.rename(item.id)`.
     var renameFocus: FocusState<PanelFocus?>.Binding
+    /// What the footer's "5 min ago" is measured against: the moment the panel was shown.
+    var now: Date = .now
 
     private var sourceStyle: SourceAppStyle {
         SourceAppStyle.resolve(for: item.sourceApp)
@@ -51,6 +53,7 @@ struct ClipCard: View {
             footer: {
                 ClipCardFooter(
                     createdAt: item.createdAt,
+                    now: now,
                     pinboard: pinboard,
                     characterCount: item.characterCount,
                     isTruncated: item.isTruncated,
@@ -264,16 +267,26 @@ private struct ClipCardHeader: View {
 
 private struct ClipCardFooter: View {
     let createdAt: Date
+    let now: Date
     let pinboard: Pinboard?
     let characterCount: Int
     let isTruncated: Bool
     let index: Int
     let metrics: CardMetrics
 
+    /// "5 min ago" / "5分钟前" in the user's locale.
+    @MainActor private static let relativeTime: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.dateTimeStyle = .named
+        formatter.unitsStyle = .short
+        return formatter
+    }()
+
     var body: some View {
         HStack(spacing: 8) {
-            // Relative copy time at the bottom-left.
-            Text(createdAt, style: .relative)
+            // Relative copy time at the bottom-left, fixed for the presentation. A live
+            // `Text(_, style: .relative)` ticks every second, and each tick re-lays out the whole panel.
+            Text(verbatim: Self.relativeTime.localizedString(for: createdAt, relativeTo: now))
                 .font(.system(size: metrics.footerSize, weight: .medium))
                 .foregroundStyle(Theme.Text.t3)
                 .lineLimit(1)

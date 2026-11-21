@@ -28,9 +28,11 @@ final class PanelViewModel: ObservableObject {
     /// Called (on the main actor) whenever the selection changes from any source — keyboard, hover,
     /// or programmatic. The controller uses it to close the peek bubble, which never follows a change.
     var onSelectionChange: (() -> Void)?
-    /// Bumped on every panel (re)show to re-focus search, including a re-summon during
-    /// the fade when content is still mounted and `onAppear` does not run again.
+    /// Bumped on every panel (re)show to re-focus search and bring the row back to the first card;
+    /// the view stays mounted between shows, so `onAppear` does not run again.
     @Published private(set) var showToken = 0
+    /// When the panel was last shown: what every card's "5 min ago" is measured against.
+    @Published private(set) var shownAt = Date()
     /// Bumped to re-assert search-field focus WITHOUT a full prepareForShow (which would also clear
     /// the query). Deleting a card can make SwiftUI drop focus; re-claiming it keeps printable input
     /// editing the query. Navigation/action keys are independently handled by the window monitor.
@@ -41,6 +43,12 @@ final class PanelViewModel: ObservableObject {
 
     let store: ClipStore
     private var itemsSubscription: AnyCancellable?
+    /// While the panel is hidden a history change only marks the result stale; it is recomputed on the
+    /// next show, so a copy made while the panel is away costs the hidden view nothing.
+    private var isHidden = false
+    private var resultIsStale = false
+    /// Set when a show moves the selection, so the view jumps to it instead of scrolling there.
+    private var jumpsToSelection = false
 
     init(store: ClipStore) {
         self.store = store
@@ -48,7 +56,12 @@ final class PanelViewModel: ObservableObject {
         // `$items` emits the NEW array (willSet semantics), so filter the published value rather than
         // `store.items`, which still holds the old one at that moment.
         itemsSubscription = store.$items.sink { [weak self] items in
-            self?.refilter(items: items)
+            guard let self else { return }
+            if isHidden {
+                resultIsStale = true
+            } else {
+                refilter(items: items)
+            }
         }
     }
 
@@ -67,11 +80,34 @@ final class PanelViewModel: ObservableObject {
     /// Fresh state for a new presentation: empty search, full history, the top item
     /// pre-highlighted (so the ring always shows what Return will paste).
     func prepareForShow() {
-        query = ""
-        filter = ClipFilter()
-        renamingItemID = nil
-        selectFirst()
-        showToken &+= 1
+        isHidden = false
+        // A fresh presentation, not a change to watch: no reflow or scroll animation.
+        var reset = Transaction()
+        reset.disablesAnimations = true
+        withTransaction(reset) {
+            query = ""
+            filter = ClipFilter()
+            if resultIsStale {
+                refilter()
+                resultIsStale = false
+            }
+            renamingItemID = nil
+            if selectedID != filteredItems.first?.id { jumpsToSelection = true }
+            selectFirst()
+            shownAt = Date()
+            showToken &+= 1
+        }
+    }
+
+    func didHide() {
+        isHidden = true
+    }
+
+    /// Whether the latest selection change came from a show (and should be jumped to, not animated).
+    /// Reading it clears it.
+    func consumeJumpToSelection() -> Bool {
+        defer { jumpsToSelection = false }
+        return jumpsToSelection
     }
 
     /// Pre-select the leading card on summon (and on each search) so it's always the fully-visible

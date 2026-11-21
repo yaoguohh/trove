@@ -59,6 +59,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         configureMenuBar()
         welcome.showAtLaunchIfNeeded(historyIsEmpty: store.items.isEmpty)
+        // After the launch path settles, so it doesn't delay the menu-bar icon.
+        DispatchQueue.main.async { [weak self] in
+            self?.panelController?.prewarm()
+        }
 
         // Image clips stored before thumbnails existed get theirs generated once, off-main, after the
         // launch path has settled. TODO(v1.5): remove with `ClipStore.backfillThumbnails`.

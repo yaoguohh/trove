@@ -7,7 +7,7 @@ final class PanelController {
     private let store: ClipStore
     private let pasteboard: ClipPasteboard
     private var panel: NSPanel?
-    private var hostingController: NSHostingController<PanelView?>?
+    private var hostingController: NSHostingController<PanelView>?
     // App-lifetime observer (the controller is held by AppDelegate for the whole run), so it never
     // needs explicit removal; the [weak self] closure keeps it from retaining the controller.
     private var appActivationObserver: NSObjectProtocol?
@@ -46,6 +46,18 @@ final class PanelController {
         self.model.onSelectionChange = { [weak self] in self?.peek.hide() }
     }
 
+    /// Build the panel and lay its content out once while it is still hidden, so the first summon after
+    /// launch doesn't pay for SwiftUI's first build of it.
+    func prewarm() {
+        if panel == nil {
+            createPanel()
+        }
+        guard let panel else { return }
+        position(panel)
+        panel.contentView?.layoutSubtreeIfNeeded()
+        model.didHide()
+    }
+
     func show() {
         if panel == nil {
             createPanel()
@@ -53,9 +65,6 @@ final class PanelController {
         guard let panel else { return }
         visibilityGeneration += 1
         isHiding = false   // a re-summon cancels any in-flight collapse
-        if hostingController?.rootView == nil {
-            hostingController?.rootView = makeContent()
-        }
         // Start transparent; the fade-in below replaces any pending hide fade for the same property.
         panel.alphaValue = 0
         position(panel)
@@ -75,8 +84,9 @@ final class PanelController {
         panel.orderFrontRegardless()
         panel.makeKey()
         installClickAwayMonitor()
-        // The content pops in on top of the fading window — PanelView.popIn.
+        // The content pops in on top of the fading window, on its layer (see `NSView.popIn`).
         panel.fadeIn()
+        hostingController?.view.popIn(nudge: 4)
         // Fresh state on every (re)show. The SwiftUI view focuses the search field (on showToken) so
         // typing filters immediately; navigation/action keys route through the window-level monitor.
         model.prepareForShow()
@@ -90,13 +100,14 @@ final class PanelController {
         // — a single chokepoint so the bubble can never outlive the panel.
         peek.hide()
         removeClickAwayMonitor()
+        // The content stays mounted while hidden, so the next show doesn't rebuild it (ADR 0015); the
+        // model stops following history until then.
+        model.didHide()
         guard let panel, panel.isVisible, animated else {
             visibilityGeneration += 1
             isHiding = false
             panel?.alphaValue = 0
             panel?.orderOut(nil)
-            // orderOut alone leaves the SwiftUI graph alive and able to schedule layout.
-            hostingController?.rootView = nil
             ImageCache.purgeFullImages()
             // Drag tracking may defer the normal display pass; flush ordering, not layout.
             CATransaction.flush()
@@ -124,7 +135,6 @@ final class PanelController {
                       let panel = self.panel else { return }
                 self.isHiding = false
                 panel.orderOut(nil)
-                self.hostingController?.rootView = nil
                 // Full-size decodes (peek / inspect / drag) are only needed while the panel is up.
                 ImageCache.purgeFullImages()
                 panel.alphaValue = 1
@@ -147,7 +157,7 @@ final class PanelController {
     }
 
     private func createPanel() {
-        let hosting = ClickThroughHostingController(rootView: Optional(makeContent()))
+        let hosting = ClickThroughHostingController(rootView: makeContent())
         hostingController = hosting
         let panel = PanelWindow(
             // `.nonactivatingPanel` lets the borderless panel become key and take keyboard input without

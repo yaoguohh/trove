@@ -40,9 +40,8 @@ struct PanelView: View {
             timeline
                 .zIndex(2)
         }
-        // Tern's popIn on the CONTENT only (Motion.scale + a 4pt rise); the glass window behind it only
-        // fades (`NSWindow.fadeIn`).
-        .popIn(trigger: model.showToken, nudge: 4)
+        // The content's popIn (Motion.scale + a 4pt rise) is played by `PanelController` on the hosting
+        // view's layer, not here: a SwiftUI popIn re-renders this whole view on every frame.
         .frame(minWidth: PanelController.minimumSize.width, minHeight: PanelController.minimumSize.height)
         .background {
             // Theme.Radius.panel, the same radius as the glass mask behind it.
@@ -188,7 +187,8 @@ struct PanelView: View {
                                         renameText: $renameDraft,
                                         onCommitRename: { commitRename(item) },
                                         onCancelRename: { cancelRename() },
-                                        renameFocus: $focus
+                                        renameFocus: $focus,
+                                        now: model.shownAt
                                     )
                                     .id(item.id)
                                     .contentShape(Rectangle())
@@ -280,6 +280,13 @@ struct PanelView: View {
                         .scrollClipDisabled()
                         .scrollIndicators(.hidden)
                         .onChange(of: model.selectedID) {
+                            // A show re-selects the first card: jump there, don't scroll across the
+                            // row from where the last presentation left off.
+                            if model.consumeJumpToSelection() {
+                                suppressHoverScroll = false
+                                if let selectedID = model.selectedID { proxy.scrollTo(selectedID, anchor: .center) }
+                                return
+                            }
                             // Hover-driven selection changes skip auto-scroll (the hovered card
                             // is already on screen); only keyboard navigation centers the card.
                             if suppressHoverScroll {
@@ -291,6 +298,11 @@ struct PanelView: View {
                                     proxy.scrollTo(selectedID, anchor: .center)
                                 }
                             }
+                        }
+                        .onChange(of: model.showToken) {
+                            // The row stays mounted between shows; even when the selection didn't
+                            // change, the user may have scrolled it away last time.
+                            if let selectedID = model.selectedID { proxy.scrollTo(selectedID, anchor: .center) }
                         }
                     }
                 }

@@ -8,8 +8,7 @@ import SwiftUI
 final class ClickThroughHostingController<Content: View>: NSHostingController<Content> {
     override init(rootView: Content) {
         super.init(rootView: rootView)
-        // The panel owns its dimensions. Unmounting its root must not replace the
-        // window's size constraints with the empty view's zero-size constraints.
+        // The panel owns its dimensions; the content never sizes the window.
         sizingOptions = []
         (view as? NSHostingView<Content>)?.sizingOptions = []
     }

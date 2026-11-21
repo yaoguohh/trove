@@ -71,8 +71,8 @@ Welcome ──────────▶ Design
 | 历史（全部 Clip 与收藏板） | `ClipStore` | 唯一来源；维护显示顺序；所有增删改都经过它 |
 | 删除撤销栈 | `ClipStore` | 仅在内存，最多 25 条，不落盘 |
 | 文件位置、全文读取 | `ClipFiles`（由 `ClipStore` 持有并注入） | 视图经 `@Environment(\.clipFiles)` 拿到，AppKit 控制器经构造参数拿到 |
-| 搜索词、筛选、选中、重命名中的卡片 | `PanelViewModel` | 筛选结果每次变化只算一次并缓存 |
-| 面板是否显示、Peek、Inspector 窗口 | `PanelController` | 面板上的窗口级动作（粘贴、复制、预览）也由它执行 |
+| 搜索词、筛选、选中、重命名中的卡片 | `PanelViewModel` | 筛选结果每次变化只算一次并缓存；面板隐藏期间不跟随历史，唤出时重算 |
+| 面板是否显示、Peek、Inspector 窗口 | `PanelController` | 面板上的窗口级动作（粘贴、复制、预览）也由它执行；面板内容隐藏时保留，不重建（ADR 0015） |
 | 粘贴目标 | `ClipPasteboard` | 唤出面板前记下，用一次即清 |
 | 用户设置 | `AppSettings.shared` | 视图直接绑定；`AppDelegate` 订阅快捷键与后台运行的变化 |
 | 快捷键是否注册成功 | `HotKeyManager` | 状态菜单打开时读取 |
@@ -98,6 +98,8 @@ Welcome ──────────▶ Design
 1. 快捷键（Carbon `RegisterEventHotKey`）或左键点菜单栏图标触发 `AppDelegate.togglePanel`。
 2. `ClipPasteboard.rememberTarget()` 记下当前最前面的应用和它的焦点元素（粘贴目标）。
 3. `PanelController.show()` 以不抢激活的方式显示面板（`.nonactivatingPanel`），粘贴目标仍是活动应用。
+   面板内容一直挂着，`PanelViewModel.prepareForShow()` 在禁用动画的事务里重置搜索、选中和滚动位置；
+   窗口淡入，内容由图层动画弹入。
 4. 键盘事件由面板窗口级的本地监听统一接收，经纯函数 `PanelKeyEvent.decode` 与
    `PanelKeyboard.intent` 决定意图；可打印字符交给搜索框。
 5. 回车或点击卡片：面板立即隐藏，`ClipPasteboard.paste` 把内容写回剪贴板（并告知 `ClipboardMonitor`

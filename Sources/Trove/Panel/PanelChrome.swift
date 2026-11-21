@@ -102,6 +102,31 @@ extension NSWindow {
     }
 }
 
+extension NSView {
+    /// Tern's popIn — from `Motion.scale` and `nudge` points lower, on the `out` curve — played by Core
+    /// Animation on this view's layer. The render server interpolates it, so its frames cost the main
+    /// thread nothing; SwiftUI's `popIn` on the panel content re-rendered the whole panel every frame
+    /// and halved the frame rate. Skipped under reduced motion.
+    func popIn(nudge: CGFloat) {
+        guard let layer, !Theme.Motion.reduce else { return }
+        // A layer transform pivots on the anchor point; scale about the center instead. The superlayer
+        // is unflipped (y up), so "lower" is a negative y.
+        let center = CGPoint(
+            x: bounds.width * (0.5 - layer.anchorPoint.x),
+            y: bounds.height * (0.5 - layer.anchorPoint.y)
+        )
+        var from = CATransform3DMakeTranslation(center.x, center.y - nudge, 0)
+        from = CATransform3DScale(from, Theme.Motion.scale, Theme.Motion.scale, 1)
+        from = CATransform3DTranslate(from, -center.x, -center.y, 0)
+        let animation = CABasicAnimation(keyPath: "transform")
+        animation.fromValue = NSValue(caTransform3D: from)
+        animation.toValue = NSValue(caTransform3D: CATransform3DIdentity)
+        animation.duration = Theme.Motion.Duration.appear
+        animation.timingFunction = Theme.Motion.outTiming
+        layer.add(animation, forKey: "popIn")
+    }
+}
+
 extension NSScreen {
     /// `screen`, else the main screen, else any screen; nil only with no display at all.
     static func preferring(_ screen: NSScreen?) -> NSScreen? {

@@ -6,7 +6,9 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct PanelControllerTests {
-    @Test func hiddenPanelUnmountsContentAndReopens() async throws {
+    // The content stays mounted between shows (ADR 0015): a reshow reuses the same hosting view instead
+    // of rebuilding the SwiftUI tree.
+    @Test func hiddenPanelKeepsContentMountedAndReopens() async throws {
         let (controller, directory) = makePanel()
         defer {
             controller.hide()
@@ -14,15 +16,13 @@ struct PanelControllerTests {
         }
         controller.show()
         let hosting = try #require(hostingView())
-        #expect(hosting.rootView != nil)
         #expect(hosting.sizingOptions.isEmpty)
         controller.hide()
         #expect(!controller.isVisible)
-        #expect(hosting.rootView == nil)
         try await Task.sleep(for: .milliseconds(100))
         controller.show()
         #expect(controller.isVisible)
-        #expect(hosting.rootView != nil)
+        #expect(hostingView() === hosting)
         #expect((hosting.window?.frame.width ?? 0) >= PanelController.minimumSize.width)
         #expect((hosting.window?.frame.height ?? 0) >= PanelController.minimumSize.height)
         // SwiftUI hands the search field focus a few run-loop turns after the show; a fixed 100ms was
@@ -31,10 +31,9 @@ struct PanelControllerTests {
         controller.hide(animated: true)
         try await Task.sleep(for: .milliseconds(350))
         #expect(!controller.isVisible)
-        #expect(hosting.rootView == nil)
     }
 
-    @Test func reopeningDuringFadeKeepsContentMounted() async throws {
+    @Test func reopeningDuringFadeEndsFullyOpaque() async throws {
         let (controller, directory) = makePanel()
         defer {
             controller.hide()
@@ -46,7 +45,6 @@ struct PanelControllerTests {
         controller.show()
         try await Task.sleep(for: .milliseconds(350))
         #expect(controller.isVisible)
-        #expect(hosting.rootView != nil)
         #expect(hosting.window?.alphaValue == 1)
     }
 
@@ -60,10 +58,10 @@ struct PanelControllerTests {
         return condition()
     }
 
-    private func hostingView() -> NSHostingView<PanelView?>? {
+    private func hostingView() -> NSHostingView<PanelView>? {
         NSApplication.shared.windows.filter(\.isVisible)
             .flatMap { $0.contentView?.subviews ?? [] }
-            .compactMap { $0 as? NSHostingView<PanelView?> }.first
+            .compactMap { $0 as? NSHostingView<PanelView> }.first
     }
 
     private func makePanel() -> (PanelController, URL) {
