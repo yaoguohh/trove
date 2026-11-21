@@ -31,11 +31,21 @@ struct StatusMenuView: View {
 
             VStack(spacing: 2) {
                 if !accessibilityTrusted {
-                    warningRow(icon: "lock.shield.fill", title: String(localized: "Grant Accessibility Permission..."), action: onGrantAccessibility)
+                    warningRow(
+                        icon: "lock.shield.fill",
+                        title: String(localized: "Turn On Auto-Paste..."),
+                        detail: String(localized: "Needs \(PermissionGuide.accessibilityName) permission"),
+                        action: onGrantAccessibility
+                    )
                     Rectangle().fill(.clear).frame(height: 4)
                 }
                 if clipboardAccessNeedsAction {
-                    warningRow(icon: "doc.on.clipboard.fill", title: String(localized: "Allow Clipboard Access..."), action: onAllowClipboardAccess)
+                    warningRow(
+                        icon: "doc.on.clipboard.fill",
+                        title: String(localized: "Allow Clipboard Access..."),
+                        detail: String(localized: "Allow Trove in Paste from Other Apps"),
+                        action: onAllowClipboardAccess
+                    )
                     Rectangle().fill(.clear).frame(height: 4)
                 }
 
@@ -152,17 +162,21 @@ struct StatusMenuView: View {
         .buttonStyle(.pressable)
     }
 
-    private func warningRow(icon: String, title: String, action: @escaping () -> Void) -> some View {
+    /// A missing permission: what it unlocks, and on a second line what to do in System Settings.
+    private func warningRow(icon: String, title: String, detail: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Image(systemName: icon).font(.system(size: 12, weight: .semibold))
-                Text(title).font(.system(size: 11.5, weight: .medium))
-                    .lineLimit(1).minimumScaleFactor(0.85)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title).font(.system(size: 11.5, weight: .medium))
+                    Text(detail).font(.system(size: 10)).foregroundStyle(Theme.Text.t2)
+                }
+                .lineLimit(1).minimumScaleFactor(0.85)
                 Spacer()
             }
             .foregroundStyle(Theme.Semantic.warn)
             .padding(.horizontal, 10)
-            .frame(height: 30)
+            .padding(.vertical, 6)
             .frame(maxWidth: .infinity)
             .background(Theme.Semantic.warn.opacity(Theme.Tint.fill), in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous).strokeBorder(Theme.Semantic.warn.opacity(Theme.Tint.hairline), lineWidth: 1))

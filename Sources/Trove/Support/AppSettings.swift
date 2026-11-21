@@ -12,6 +12,7 @@ final class AppSettings: ObservableObject {
         static let runInBackground = "Trove.runInBackground"
         /// No UI: `defaults write io.github.yaoguohh.trove Trove.maxItems 1000`.
         static let maxItems = "Trove.maxItems"
+        static let welcomeSeen = "Trove.welcomeSeen"
     }
 
     static let defaultMaxItems = 500
@@ -38,6 +39,12 @@ final class AppSettings: ObservableObject {
 
     /// History cap, read once at launch.
     let maxItems: Int
+
+    /// Whether the welcome window has been shown once; it opens on its own only before that.
+    var welcomeSeen: Bool {
+        get { defaults.bool(forKey: Key.welcomeSeen) }
+        set { defaults.set(newValue, forKey: Key.welcomeSeen) }
+    }
 
     private let defaults: UserDefaults
 

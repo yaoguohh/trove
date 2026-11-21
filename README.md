@@ -27,6 +27,7 @@ natively in Swift / AppKit + SwiftUI.
 - Right-click the menu-bar icon for a compact menu — shortcut, link previews, and background mode, all inline (no separate Preferences window)
 - Link title + favicon previews with local metadata caching (off by default — turn on **Link Previews** in the menu-bar menu; fetching tells the link's site that you copied it)
 - In-app auto-updates via [Sparkle](https://sparkle-project.org)
+- A welcome window on first launch; granting Accessibility is a drag of Trove's icon into the list System Settings opens, guided by [PermissionFlow](https://github.com/jaywcjlove/PermissionFlow)
 - History keeps 500 unpinned clips by default (`defaults write io.github.yaoguohh.trove Trove.maxItems 1000` to change, 50–5000); pinned clips are never aged out
 
 ## Keyboard
@@ -65,14 +66,17 @@ macOS Gatekeeper will block it. This is a **one-time** step:
 After that one approval, **every future update installs silently** — Sparkle downloads updates over
 its own connection and they never get quarantined, so Gatekeeper won't prompt again.
 
-Trove asks for two permissions; the menu-bar menu shows a warning row while either is missing:
+Trove asks for two permissions. On first launch a welcome window lists both with their status, and
+the menu-bar menu shows a warning row while either is missing:
 
-- **Accessibility** (System Settings → Privacy & Security → Accessibility) lets Trove put the clip
-  you choose into the app you were in, by sending it `⌘V`. Without it, choosing a clip only copies
-  it to the clipboard.
-- **Pasteboard access** (macOS 15.4 and later): in System Settings → Privacy & Security, set
-  Trove to **Always Allow**, or macOS asks every time Trove records a copy — and Trove records
-  nothing when it is set to Deny. The menu-bar menu's **Allow Clipboard Access…** row opens that page.
+- **Accessibility** — named **Device Control and Data Access** from macOS 27 (System Settings →
+  Privacy & Security) — lets Trove put the clip you choose into the app you were in, by sending it
+  `⌘V`. Without it, choosing a clip only copies it to the clipboard. **Allow…** in the welcome window
+  (or **Turn On Auto-Paste…** in the menu) opens that page with a small panel beside it: drag Trove's
+  icon into the list.
+- **Paste from Other Apps** (macOS 15.4 and later, System Settings → Privacy & Security): allow
+  Trove there, or macOS asks every time Trove records a copy — and Trove records nothing when it is
+  denied. The menu's **Allow Clipboard Access…** row opens that page.
 
 ## Privacy
 

@@ -18,6 +18,7 @@
 | [0011](0011-peek-and-inspector.md) | 预览分两种：一次性的 Peek 和独立的 Inspector；单个链接交给浏览器 |
 | [0012](0012-unmount-hidden-panel.md) | 面板隐藏时卸载内容，释放原图缓存 |
 | [0013](0013-paste-keystroke-first.md) | 粘贴：目标在前台时直接发 ⌘V，辅助功能插入只在目标不在前台时用，并读回核对 |
+| [0014](0014-permission-guide.md) | 权限引导：欢迎窗口加 PermissionFlow 拖拽浮窗，不再弹系统授权框 |
 
 ## 新增一篇
 

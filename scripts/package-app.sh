@@ -45,6 +45,12 @@ else
   echo "warning: Sparkle.framework not found in .build; auto-update will be unavailable in this build." >&2
 fi
 
+# PermissionFlow's resource bundle (the guide panel's localized copy). SwiftPM leaves it next to the
+# binary; the package looks for it in Contents/Resources.
+PERMISSION_FLOW_BUNDLE="$BIN_DIR/PermissionFlow_PermissionFlow.bundle"
+[ -d "$PERMISSION_FLOW_BUNDLE" ] || { echo "error: $PERMISSION_FLOW_BUNDLE not found." >&2; exit 1; }
+cp -R "$PERMISSION_FLOW_BUNDLE" "$RESOURCES_DIR/"
+
 swift "$ROOT_DIR/scripts/generate-app-icon.swift" "$ICON_FILE"
 
 cp "$ROOT_DIR/scripts/Info.plist" "$CONTENTS_DIR/Info.plist"

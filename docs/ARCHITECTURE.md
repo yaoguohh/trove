@@ -1,8 +1,8 @@
 # 架构说明
 
 Trove 是一个 macOS 菜单栏应用：后台轮询系统剪贴板，把每次复制存成一条 **Clip**；用户按快捷键唤出
-**面板**，选中一张卡片后把它粘贴回原来所在的应用。整个应用是一个 SwiftPM 可执行目标，唯一的外部依赖
-是 Sparkle（自动更新）。
+**面板**，选中一张卡片后把它粘贴回原来所在的应用。整个应用是一个 SwiftPM 可执行目标，外部依赖有两个：
+Sparkle（自动更新）和 PermissionFlow（辅助功能授权引导）。
 
 本文讲模块怎样划分、状态归谁、两条主流程怎样走、数据怎样落盘。做过的取舍及其理由见 [ADR](adr/README.md)，
 视觉规范见 [DESIGN.md](DESIGN.md)，开发与提交约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。
@@ -24,7 +24,7 @@ Trove 是一个 macOS 菜单栏应用：后台轮询系统剪贴板，把每次�
 
 ## 模块
 
-源码在 `Sources/Trove/` 下按职责分为 14 个目录，测试在 `Tests/TroveTests/` 下用同样的目录。
+源码在 `Sources/Trove/` 下按职责分为 15 个目录，测试在 `Tests/TroveTests/` 下用同样的目录。
 
 | 目录 | 职责 | 主要类型 |
 |---|---|---|
@@ -41,6 +41,7 @@ Trove 是一个 macOS 菜单栏应用：后台轮询系统剪贴板，把每次�
 | `Links/` | 链接卡片的标题与图标 | `LinkMetadataProvider`、`LinkAddressGuard`、`HTMLHead`、`LinkCardText` |
 | `SourceApp/` | 来源应用的图标与配色 | `SourceAppIconProvider`、`SourceAppStyle` |
 | `Design/` | 视觉令牌与共用的视觉组件 | `Theme`、`ThemeModifiers`、`PinboardColor`、`ImageUnavailableView` |
+| `Welcome/` | 欢迎窗口与权限引导 | `WelcomeController`、`WelcomeView`、`PermissionStatus`、`PermissionGuide` |
 | `App/` | 组合根、状态菜单、自动更新 | `AppDelegate`、`StatusMenuController`、`StatusMenuView`、`UpdaterController` |
 
 ### 依赖方向
@@ -55,6 +56,7 @@ Paste ────────────▶ Capture（告知自己写回）、
 Capture ──────────▶ Storage、Model
 Storage ──────────▶ Model
 Links、SourceApp、Hotkey ─▶ Support、Design、Model
+Welcome ──────────▶ Design
 所有目录 ─────────▶ Support
 ```
 
@@ -74,6 +76,8 @@ Links、SourceApp、Hotkey ─▶ Support、Design、Model
 | 粘贴目标 | `ClipPasteboard` | 唤出面板前记下，用一次即清 |
 | 用户设置 | `AppSettings.shared` | 视图直接绑定；`AppDelegate` 订阅快捷键与后台运行的变化 |
 | 快捷键是否注册成功 | `HotKeyManager` | 状态菜单打开时读取 |
+| 两项权限的实时状态 | `PermissionStatus`（由 `WelcomeController` 持有） | 欢迎窗口打开期间每秒读一次；状态菜单打开时自己读一次 |
+| 授权引导浮窗 | `PermissionGuide` | 引导期间每秒检查是否已授权，授权后收起浮窗 |
 
 ## 主流程
 
@@ -99,6 +103,8 @@ Links、SourceApp、Hotkey ─▶ Support、Design、Model
 5. 回车或点击卡片：面板立即隐藏，`ClipPasteboard.paste` 把内容写回剪贴板（并告知 `ClipboardMonitor`
    这是自己写的），再由 `PasteExecutor` 送进粘贴目标：目标仍在前台时只抬它的前窗并合成 ⌘V；目标不在前台
    时先用辅助功能接口插入并读回核对，没写进去再走 ⌘V（ADR 0013）。
+6. 没有辅助功能权限时只复制，`ClipPasteboard.onAccessibilityMissing` 通知 `AppDelegate` 打开欢迎窗口
+   （每次启动最多一次），由那里进入授权引导（ADR 0014）。
 
 ## 并发
 
@@ -139,6 +145,7 @@ Links、SourceApp、Hotkey ─▶ Support、Design、Model
 
 纯判断都抽成了纯函数并有单元测试：`PanelKeyboard.intent`、`PanelKeyEvent.decode`、
 `PasteboardIngest.decide`、`ClipSearch.filter`、`LinkCardText.make`、`InspectorRenderer`、
-`EditingShortcuts`、`ImageFit`、`LinkAddressGuard`、`HTMLHead`。存储相关测试用 `TestSupport` 里的
+`EditingShortcuts`、`ImageFit`、`LinkAddressGuard`、`HTMLHead`、`PasteExecutor.triesAccessibilityFirst`、
+`WelcomeController.showsAtLaunch`。存储相关测试用 `TestSupport` 里的
 `makeTempStore()`，每个 store 有自己的临时根目录，sidecar、启动清理、缩略图回填、淘汰删文件都真实
 运行，不会碰到用户数据。

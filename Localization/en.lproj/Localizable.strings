@@ -16,8 +16,10 @@
 "Run in Background" = "Run in Background";
 "Quit" = "Quit";
 "Check for Updates..." = "Check for Updates…";
-"Grant Accessibility Permission..." = "Grant Accessibility Permission...";
+"Turn On Auto-Paste..." = "Turn On Auto-Paste...";
+"Needs %@ permission" = "Needs %@ permission";
 "Allow Clipboard Access..." = "Allow Clipboard Access...";
+"Allow Trove in Paste from Other Apps" = "Allow Trove in Paste from Other Apps";
 "1 clip kept" = "1 clip kept";
 "%lld clips kept" = "%lld clips kept";
 "Local · MIT" = "Local · MIT";
@@ -63,3 +65,23 @@
 "Recording…" = "Recording…";
 "Cancel" = "Cancel";
 "Reset to default" = "Reset to default";
+
+/* Welcome window */
+"Welcome to Trove" = "Welcome to Trove";
+"Everything you copy, one shortcut away." = "Everything you copy, one shortcut away.";
+"Turn On Auto-Paste" = "Turn On Auto-Paste";
+"This clip is on the clipboard, so ⌘V pastes it. Once Trove has access, choosing a card pastes it for you." = "This clip is on the clipboard, so ⌘V pastes it. Once Trove has access, choosing a card pastes it for you.";
+"Press %@ in any app" = "Press %@ in any app";
+"Your clipboard history opens over the app you're in." = "Your clipboard history opens over the app you're in.";
+"Choose a card to paste it" = "Choose a card to paste it";
+"Return or a click puts it into the field you were typing in." = "Return or a click puts it into the field you were typing in.";
+"Pin what you reuse" = "Pin what you reuse";
+"Pinned clips are never cleared, and pinboards group them." = "Pinned clips are never cleared, and pinboards group them.";
+"Lets Trove paste into the app you were in." = "Lets Trove paste into the app you were in.";
+"Paste from Other Apps" = "Paste from Other Apps";
+"Allow Trove here, or macOS asks before each copy is recorded." = "Allow Trove here, or macOS asks before each copy is recorded.";
+"Allow..." = "Allow...";
+"Open Settings..." = "Open Settings...";
+"Allowed" = "Allowed";
+"Later" = "Later";
+"Done" = "Done";

@@ -11,6 +11,9 @@ final class ClipPasteboard {
     /// Keeps the lazy TIFF provider alive while Trove's image owns the pasteboard.
     private var imageOwner: ImagePasteboardOwner?
     private var pasteTarget: PasteTargetSnapshot?
+    /// Called when a paste could only copy because Accessibility isn't granted — the app shows the
+    /// permission guide.
+    var onAccessibilityMissing: (() -> Void)?
 
     /// `pasteboard` is injectable so tests can drive a private named pasteboard.
     init(store: ClipStore, monitor: ClipboardMonitor, pasteboard: NSPasteboard = .general) {
@@ -52,6 +55,7 @@ final class ClipPasteboard {
         Task {
             let result = await PasteExecutor.shared.paste(text: text, target: target)
             Log.paste.debug("paste via \(result.strategy.rawValue, privacy: .public) success=\(result.success)")
+            if result.strategy == .pasteboardOnly { onAccessibilityMissing?() }
         }
     }
 }

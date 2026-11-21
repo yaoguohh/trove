@@ -21,7 +21,7 @@ final class PasteExecutor {
     /// Delivers what is already on the pasteboard into `target`. `text` is the clip's full text, or nil
     /// for an image (which can only arrive by ⌘V).
     func paste(text: String?, target: PasteTargetSnapshot?) async -> PasteExecutionResult {
-        guard AccessibilityPermission.requestIfNeeded() else {
+        guard AccessibilityPermission.isTrusted else {
             return PasteExecutionResult(
                 strategy: .pasteboardOnly,
                 success: false,

@@ -12,6 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusMenu: StatusMenuController?
     private var panelController: PanelController?
     private var updaterController: UpdaterController?
+    private let permissionGuide = PermissionGuide()
+    private var welcome: WelcomeController?
     private var settingsObservers: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -25,6 +27,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Log.clipboard.notice("clipboard access behavior: \(ClipboardAccessPermission.logDescription, privacy: .public)")
         let pasteboard = ClipPasteboard(store: store, monitor: clipboardMonitor)
         clipPasteboard = pasteboard
+        let welcome = WelcomeController(guide: permissionGuide, settings: settings)
+        self.welcome = welcome
+        pasteboard.onAccessibilityMissing = { [weak welcome] in welcome?.showForPaste() }
 
         panelController = PanelController(store: store, pasteboard: pasteboard)
         let hotKeys = HotKeyManager { [weak self] in
@@ -40,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settings: settings,
             updater: updater,
             hotKeys: hotKeys,
+            guide: permissionGuide,
             showPanel: { [weak self] in self?.showPanel() }
         )
 
@@ -52,6 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .store(in: &settingsObservers)
 
         configureMenuBar()
+        welcome.showAtLaunchIfNeeded(historyIsEmpty: store.items.isEmpty)
 
         // Image clips stored before thumbnails existed get theirs generated once, off-main, after the
         // launch path has settled. TODO(v1.5): remove with `ClipStore.backfillThumbnails`.

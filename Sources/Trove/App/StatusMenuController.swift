@@ -12,6 +12,7 @@ final class StatusMenuController {
     private let updater: UpdaterController
     private let hotKeys: HotKeyManager
     private let showPanel: () -> Void
+    private let guide: PermissionGuide
 
     private var panel: NSPanel?
     private var mouseMonitor: Any?
@@ -25,6 +26,7 @@ final class StatusMenuController {
         settings: AppSettings,
         updater: UpdaterController,
         hotKeys: HotKeyManager,
+        guide: PermissionGuide,
         showPanel: @escaping () -> Void
     ) {
         self.store = store
@@ -32,6 +34,7 @@ final class StatusMenuController {
         self.updater = updater
         self.hotKeys = hotKeys
         self.showPanel = showPanel
+        self.guide = guide
     }
 
     func toggle(under button: NSStatusBarButton) {
@@ -75,7 +78,7 @@ final class StatusMenuController {
             },
             onCheckUpdates: { [weak self] in self?.close(); self?.updater.checkForUpdates() },
             onClose: { [weak self] in self?.close() },
-            onGrantAccessibility: { [weak self] in self?.close(); AccessibilityPermission.openSettings() },
+            onGrantAccessibility: { [weak self] in self?.close(); self?.guide.guideAccessibility() },
             onAllowClipboardAccess: { [weak self] in self?.close(); ClipboardAccessPermission.openSettings() },
             onQuit: { NSApp.terminate(nil) }
         )

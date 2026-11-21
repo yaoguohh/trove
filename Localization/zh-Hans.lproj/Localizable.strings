@@ -16,8 +16,10 @@
 "Run in Background" = "后台运行";
 "Quit" = "退出";
 "Check for Updates..." = "检查更新…";
-"Grant Accessibility Permission..." = "授予辅助功能权限…";
+"Turn On Auto-Paste..." = "开启自动粘贴…";
+"Needs %@ permission" = "需要「%@」权限";
 "Allow Clipboard Access..." = "允许访问剪贴板…";
+"Allow Trove in Paste from Other Apps" = "在「从其他App粘贴」里允许 Trove";
 "1 clip kept" = "已存 1 条";
 "%lld clips kept" = "已存 %lld 条";
 "Local · MIT" = "本地 · MIT";
@@ -63,3 +65,23 @@
 "Recording…" = "录制中…";
 "Cancel" = "取消";
 "Reset to default" = "恢复默认";
+
+/* Welcome window */
+"Welcome to Trove" = "欢迎使用 Trove";
+"Everything you copy, one shortcut away." = "复制过的内容，一个快捷键就能找回。";
+"Turn On Auto-Paste" = "开启自动粘贴";
+"This clip is on the clipboard, so ⌘V pastes it. Once Trove has access, choosing a card pastes it for you." = "这一条已经复制好了，按 ⌘V 就能粘贴。授权后，选中卡片会直接粘贴进去。";
+"Press %@ in any app" = "在任何应用里按 %@";
+"Your clipboard history opens over the app you're in." = "剪贴板历史会浮在当前应用上方。";
+"Choose a card to paste it" = "选中卡片即粘贴";
+"Return or a click puts it into the field you were typing in." = "回车或点击，内容会粘贴进你刚才的输入框。";
+"Pin what you reuse" = "常用的置顶";
+"Pinned clips are never cleared, and pinboards group them." = "置顶的内容不会被清理，还能用收藏板分组。";
+"Lets Trove paste into the app you were in." = "让 Trove 把内容粘贴进你原来所在的应用。";
+"Paste from Other Apps" = "从其他App粘贴";
+"Allow Trove here, or macOS asks before each copy is recorded." = "在这里允许 Trove，否则每次记录复制前系统都会先询问。";
+"Allow..." = "授权…";
+"Open Settings..." = "打开设置…";
+"Allowed" = "已允许";
+"Later" = "稍后";
+"Done" = "完成";
