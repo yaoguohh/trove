@@ -34,7 +34,7 @@ Sparkle（自动更新）和 PermissionFlow（辅助功能授权引导）。
 | `Capture/` | 监听系统剪贴板，决定收不收、收成什么 | `ClipboardMonitor`、`PasteboardIngest`、`ImageIngest` |
 | `Paste/` | 把 Clip 写回剪贴板并送进粘贴目标 | `ClipPasteboard`、`PasteExecutor`、`PasteTargetSnapshot` |
 | `Hotkey/` | 全局快捷键的注册与录制 | `HotKeyManager`、`ShortcutRecorder` |
-| `Panel/` | 面板窗口、键盘路由、搜索与筛选、收藏板条 | `PanelController`、`PanelView`、`PanelViewModel`、`PanelKeyboard`、`PanelKeyEvent`、`PinboardStrip` |
+| `Panel/` | 面板窗口、键盘路由、搜索与筛选、收藏板条 | `PanelController`、`PanelView`、`PanelViewModel`、`PanelKeyboard`、`PanelKeyEvent`、`PinboardStrip`、`PanelLayout` |
 | `Card/` | 卡片及其内容、拖拽 | `ClipCard`、`CardMetrics`、`CardDragSurface` |
 | `Peek/` | 空格弹出的气泡 | `PeekController`、`PeekView` |
 | `Inspector/` | 独立的检查窗口及其内容判定 | `InspectorController`、`InspectorRenderer`、`InspectorViews`、`EditingShortcuts` |

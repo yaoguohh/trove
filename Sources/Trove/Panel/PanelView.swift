@@ -29,8 +29,6 @@ struct PanelView: View {
     @FocusState private var focus: PanelFocus?
 
     private static let toolbarSpacing: CGFloat = 14
-    // Shared height for every toolbar item so they share one vertical center / equal top margin.
-    private static let toolbarItemHeight: CGFloat = 36
 
     private var filteredItems: [Clip] { model.filteredItems }
 
@@ -101,7 +99,7 @@ struct PanelView: View {
             } label: {
                 Image(systemName: "arrow.triangle.2.circlepath")
                     .font(.system(size: 16, weight: .medium))
-                    .frame(width: 30, height: Self.toolbarItemHeight)
+                    .frame(width: PanelLayout.toolbarHeight, height: PanelLayout.toolbarHeight)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.pressable)
@@ -117,19 +115,16 @@ struct PanelView: View {
                     model.filter.pinboardID = nil
                 }
             )
-            // Uniform 36pt height across all toolbar items so they share one vertical center and
-            // an equal top margin.
-            .frame(height: Self.toolbarItemHeight)
+            .frame(height: PanelLayout.toolbarHeight)
 
-            PinboardStrip(store: store, model: model, spacing: Self.toolbarSpacing, itemHeight: Self.toolbarItemHeight)
+            PinboardStrip(store: store, model: model, spacing: Self.toolbarSpacing, itemHeight: PanelLayout.toolbarHeight)
 
             Spacer(minLength: 0)
 
             moreActionsMenu
         }
-        .padding(.horizontal, 22)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
+        .padding(.horizontal, PanelLayout.inset)
+        .padding(.top, PanelLayout.inset)
     }
 
     private var moreActionsMenu: some View {
@@ -156,7 +151,7 @@ struct PanelView: View {
             Image(systemName: "ellipsis")
                 .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(Theme.Text.t2)
-                .frame(width: 36, height: Self.toolbarItemHeight)
+                .frame(width: PanelLayout.toolbarHeight, height: PanelLayout.toolbarHeight)
                 .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
@@ -170,7 +165,7 @@ struct PanelView: View {
                 emptyState
             } else {
                 GeometryReader { geometry in
-                    let metrics = CardMetrics(containerSize: geometry.size)
+                    let metrics = CardMetrics(containerSize: geometry.size, inset: PanelLayout.inset)
                     ScrollViewReader { proxy in
                         ScrollView(.horizontal) {
                             LazyHStack(alignment: .center, spacing: metrics.spacing) {

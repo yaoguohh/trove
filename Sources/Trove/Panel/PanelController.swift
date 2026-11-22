@@ -26,7 +26,7 @@ final class PanelController {
     private var visibilityGeneration = 0
 
     /// The smallest the panel ever gets; `position` never lays it out narrower.
-    static let minimumSize = NSSize(width: 720, height: 240)
+    static let minimumSize = NSSize(width: 720, height: PanelLayout.chromeHeight + CardMetrics.minHeight)
 
     /// Panel non-card width (toolbar + side insets around the card strip). Used to derive the
     /// ⌘←/⌘→ page size in `visibleCardCount()`.
@@ -292,8 +292,9 @@ final class PanelController {
         // Never below the minimum width, or AppKit would clamp the width while the origin below stays
         // centered on the smaller value, mis-centering / overflowing the panel on a very narrow display.
         let width = max(Self.minimumSize.width, vis.width - 16)
-        // Taller panel so the enlarged cards can reach their height cap on a big display.
-        let height = min(376, max(256, vis.height * 0.26))
+        // About a quarter of the screen, never taller than the tallest card needs: any extra height
+        // would open a gap above and below the row.
+        let height = min(PanelLayout.chromeHeight + CardMetrics.maxHeight, max(256, vis.height * 0.26))
 
         // Center horizontally, but never let the left edge fall off-screen: on a display narrower than
         // the minimum width the centered origin would be negative, hiding the leading cards. Pinning to

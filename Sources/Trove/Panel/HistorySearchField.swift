@@ -47,7 +47,7 @@ struct HistorySearchField: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        .frame(height: PanelLayout.toolbarHeight)
         // Flat fill + hairline from the line ladder (no Material, so the glass vibrancy can't tint
         // it). Active = one step up the ladder; no accent ring — Tern drops the ring on text inputs,
         // and this field is focused nearly all the time.

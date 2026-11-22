@@ -23,13 +23,18 @@ struct CardMetrics {
     static let referenceCardWidth: CGFloat = 296
     static let referenceCardSpacing: CGFloat = 18
 
-    init(containerSize: CGSize) {
-        topPadding = min(13, max(9, containerSize.height * 0.035))
-        bottomPadding = min(24, max(16, containerSize.height * 0.075))
-        let usableHeight = max(158, containerSize.height - topPadding - bottomPadding - 8)
-        // Height capped at 264 with a 1.12 aspect so each card shows a useful amount of content; the
-        // panel height (PanelController.position) leaves room to reach the cap on a big display.
-        height = min(264, max(176, usableHeight))
+    /// Card height range. The panel's height is derived from it (`PanelController`), so the row is
+    /// always exactly `inset` from the toolbar above and the panel edge below.
+    static let minHeight: CGFloat = 176
+    static let maxHeight: CGFloat = 264
+
+    /// `containerSize` is the area under the toolbar; `inset` is kept on every side of the row.
+    init(containerSize: CGSize, inset: CGFloat) {
+        topPadding = inset
+        bottomPadding = inset
+        sidePadding = inset
+        // A 1.12 aspect so each card shows a useful amount of content.
+        height = min(Self.maxHeight, max(Self.minHeight, containerSize.height - 2 * inset))
         width = min(330, max(220, height * 1.12))
         headerHeight = min(48, max(38, height * 0.16))
         footerHeight = min(32, max(26, height * 0.13))
@@ -38,7 +43,6 @@ struct CardMetrics {
         // Fixed radius (Theme.Radius.card): nothing scales its radius with its size, so cards and the
         // panel (16) stay in one family at every display size.
         cornerRadius = Theme.Radius.card
-        sidePadding = min(28, max(16, containerSize.width * 0.015))
         spacing = min(22, max(14, width * 0.06))
         titleSize = min(16, max(14, height * 0.048))
         bodySize = min(17, max(14, height * 0.050))

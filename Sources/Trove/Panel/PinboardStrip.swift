@@ -32,7 +32,7 @@ struct PinboardStrip: View {
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 17, weight: .medium))
-                    .frame(width: 30, height: itemHeight)
+                    .frame(width: itemHeight, height: itemHeight)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.pressable)
@@ -182,7 +182,7 @@ struct TopPinboardButton: View {
                     .foregroundStyle(isSelected ? Theme.Text.t1 : Theme.Text.t2)
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 7)
+            .frame(maxHeight: .infinity)
             // Selected: the pinboard's own color at 16% (Tern's selected-fill step); hover: l1.
             .background(isSelected ? color.opacity(Theme.Tint.fill) : hovering ? Theme.Line.l1 : Color.clear, in: Capsule())
             // Without this the padding around the label isn't tappable (.plain buttons

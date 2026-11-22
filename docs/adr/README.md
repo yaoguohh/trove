@@ -20,6 +20,7 @@
 | [0013](0013-paste-keystroke-first.md) | 粘贴：目标在前台时直接发 ⌘V，辅助功能插入只在目标不在前台时用，并读回核对 |
 | [0014](0014-permission-guide.md) | 权限引导：欢迎窗口加 PermissionFlow 拖拽浮窗，不再弹系统授权框 |
 | [0015](0015-keep-panel-mounted.md) | 面板内容常驻：隐藏时不卸载，弹入动画交给 Core Animation，卡片时间不再逐秒刷新 |
+| [0016](0016-panel-spacing.md) | 面板间距：一个内边距贯穿四边和工具栏下方，工具栏控件统一高度 |
 
 ## 新增一篇
 
