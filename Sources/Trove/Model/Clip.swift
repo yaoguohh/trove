@@ -71,7 +71,7 @@ struct Clip: Identifiable, Codable, Equatable, Sendable {
     /// only for image clips stored before identities existed — those simply never dedup.
     var contentHash: String?
     /// True only when the content was so large it hit `ultimateSidecarCeiling` and was hard-truncated
-    /// (the rare case where paste loses the tail). Surfaced as a "Truncated" footer chip.
+    /// (the rare case where paste loses the tail). Surfaced as a warning mark in the card's meta row.
     var isTruncated: Bool
     /// The clip's true source length in characters (== `characterCount` except for ceiling-truncated
     /// clips, where `characterCount` is also the original length so the footer stays honest).

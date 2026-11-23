@@ -40,6 +40,9 @@ final class PanelViewModel: ObservableObject {
     /// The card whose title is being renamed inline (nil = not renaming). Drives the rename editor's
     /// visibility; the actual keyboard focus is the view's single PanelFocus authority.
     @Published var renamingItemID: Clip.ID?
+    /// The card size for the display the panel is on; the controller sets it each time it places the
+    /// panel, before showing it.
+    @Published var cardSize: CardMetrics.Size = .medium
 
     let store: ClipStore
     private var itemsSubscription: AnyCancellable?

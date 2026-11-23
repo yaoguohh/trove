@@ -9,13 +9,16 @@ struct ImageCardBody: View {
             // The thumbnail, never the original: a card is ~300pt wide, and decoding every screenshot
             // at full size would keep tens of MB of bitmaps resident while the panel is hidden.
             if let image = ImageCache.thumbnail(for: item, in: files) {
+                // Rounded and outlined at the picture's fitted size, then placed at the top-left like
+                // text. Framed first, the outline drew around the whole body with the picture floating
+                // in the middle of it.
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.media, style: .continuous))
                     // A hairline keeps a white-background image from reading as a hole in the card.
                     .overlay { RoundedRectangle(cornerRadius: Theme.Radius.media, style: .continuous).strokeBorder(Theme.Line.l2, lineWidth: 1) }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } else {
                 ImageUnavailableView(symbolSize: 28, textSize: 13)
             }
@@ -41,14 +44,22 @@ struct LinkCardBody: View {
         LinkCardText.make(rawURL: item.text, metadata: metadata)
     }
 
+    private var heroFont: NSFont {
+        .systemFont(ofSize: metrics.titleSize, weight: .semibold)
+    }
+
     var body: some View {
         let text = cardText
         VStack(alignment: .leading, spacing: 8) {
-            // Site icon + hero: the fetched page title, else the smart path-tail, else the host.
-            HStack(alignment: .top, spacing: 8) {
-                LinkSiteIcon(metadata: metadata, accent: accent, size: metrics.iconSize * 0.72)
+            // Site icon + hero: the fetched page title, else the smart path-tail, else the host. The
+            // icon centers on the title's first line, at half its cap height. Top alignment left that
+            // line 4pt above the icon's center; centering on the whole title would move the icon with
+            // the number of lines.
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                LinkSiteIcon(metadata: metadata, accent: accent, size: metrics.siteIconSize)
+                    .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + heroFont.capHeight / 2 }
                 HighlightedText(text: text.primary, query: searchQuery)
-                    .font(.system(size: metrics.titleSize + 1, weight: .semibold))
+                    .font(Font(heroFont))
                     .foregroundStyle(Theme.Text.t1)
                     .lineLimit(2)
                     .truncationMode(.tail)
@@ -66,7 +77,7 @@ struct LinkCardBody: View {
             // competes for the card's height. Omitted entirely for a root URL (nothing more to show).
             if let route = text.route {
                 HighlightedText(text: text.host + route, query: searchQuery)
-                    .font(.system(size: metrics.footerSize, design: .monospaced))
+                    .font(.system(size: metrics.captionSize, design: .monospaced))
                     .foregroundStyle(Theme.Text.t2)
                     .lineLimit(text.primaryIsTitle ? 1 : 2)
                     .truncationMode(.head)
@@ -78,7 +89,7 @@ struct LinkCardBody: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HighlightedText(text: text.host, query: searchQuery)
-                    .font(.system(size: metrics.footerSize))
+                    .font(.system(size: metrics.captionSize))
                     .foregroundStyle(Theme.Text.t3)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -168,10 +179,7 @@ struct SourceIcon: View {
     var body: some View {
         Group {
             if let icon = SourceAppIconProvider.icon(for: item) {
-                Image(nsImage: icon)
-                    .resizable()
-                    .interpolation(.high)
-                    .scaledToFit()
+                AppIconImage(image: icon, size: size)
             } else {
                 fallbackIcon
             }

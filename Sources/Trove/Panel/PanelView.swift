@@ -161,141 +161,136 @@ struct PanelView: View {
             if filteredItems.isEmpty {
                 emptyState
             } else {
-                GeometryReader { geometry in
-                    let metrics = CardMetrics(containerSize: geometry.size, inset: PanelLayout.inset)
-                    ScrollViewReader { proxy in
-                        ScrollView(.horizontal) {
-                            LazyHStack(alignment: .center, spacing: metrics.spacing) {
-                                ForEach(Array(filteredItems.enumerated()), id: \.element.id) { index, item in
-                                    ClipCard(
+                let metrics = CardMetrics(size: model.cardSize)
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal) {
+                        LazyHStack(alignment: .center, spacing: PanelLayout.inset) {
+                            ForEach(filteredItems) { item in
+                                ClipCard(
+                                    item: item,
+                                    pinboard: pinboard(for: item),
+                                    isSelected: model.selectedID == item.id,
+                                    isHovered: hoveredID == item.id,
+                                    searchQuery: model.query,
+                                    metrics: metrics,
+                                    isRenaming: model.renamingItemID == item.id,
+                                    renameText: $renameDraft,
+                                    onCommitRename: { commitRename(item) },
+                                    onCancelRename: { cancelRename() },
+                                    renameFocus: $focus,
+                                    now: model.shownAt
+                                )
+                                .id(item.id)
+                                .contentShape(Rectangle())
+                                .overlay {
+                                    CardDragSurface(
                                         item: item,
-                                        index: index,
-                                        pinboard: pinboard(for: item),
-                                        isSelected: model.selectedID == item.id,
-                                        isHovered: hoveredID == item.id,
-                                        searchQuery: model.query,
-                                        metrics: metrics,
-                                        isRenaming: model.renamingItemID == item.id,
-                                        renameText: $renameDraft,
-                                        onCommitRename: { commitRename(item) },
-                                        onCancelRename: { cancelRename() },
-                                        renameFocus: $focus,
-                                        now: model.shownAt
+                                        onClick: {
+                                            model.selectedID = item.id
+                                            actions.paste(item)
+                                        },
+                                        onDragStart: {
+                                            model.selectedID = item.id
+                                        },
+                                        onSessionBegan: {
+                                            // Hide the panel once the drag is live so it
+                                            // never blocks a drop target at screen bottom.
+                                            actions.close()
+                                        },
+                                        onDragEnd: { operation in
+                                            // Drop accepted by an app → the drag delivered
+                                            // the content. Not accepted → bring the panel
+                                            // back so the user can retry (no blind paste).
+                                            if operation.isEmpty {
+                                                actions.reopen()
+                                            }
+                                        },
+                                        makeDragImage: {
+                                            dragImage(for: item, metrics: metrics)
+                                        }
                                     )
-                                    .id(item.id)
-                                    .contentShape(Rectangle())
-                                    .overlay {
-                                        CardDragSurface(
-                                            item: item,
-                                            onClick: {
-                                                model.selectedID = item.id
-                                                actions.paste(item)
-                                            },
-                                            onDragStart: {
-                                                model.selectedID = item.id
-                                            },
-                                            onSessionBegan: {
-                                                // Hide the panel once the drag is live so it
-                                                // never blocks a drop target at screen bottom.
-                                                actions.close()
-                                            },
-                                            onDragEnd: { operation in
-                                                // Drop accepted by an app → the drag delivered
-                                                // the content. Not accepted → bring the panel
-                                                // back so the user can retry (no blind paste).
-                                                if operation.isEmpty {
-                                                    actions.reopen()
-                                                }
-                                            },
-                                            makeDragImage: {
-                                                dragImage(for: item, index: index, metrics: metrics)
-                                            }
-                                        )
-                                        // Disable click/drag on the card being renamed so a stray
-                                        // body click can't paste mid-edit.
-                                        .allowsHitTesting(model.renamingItemID != item.id)
+                                    // Disable click/drag on the card being renamed so a stray
+                                    // body click can't paste mid-edit.
+                                    .allowsHitTesting(model.renamingItemID != item.id)
+                                }
+                                // Hover "rename" pencil, layered ABOVE the drag surface so it
+                                // stays clickable (the editor itself lives inside the header).
+                                .overlay(alignment: .topTrailing) {
+                                    if hoveredID == item.id, model.renamingItemID == nil {
+                                        renamePencil(for: item, metrics: metrics)
                                     }
-                                    // Hover "rename" pencil, layered ABOVE the drag surface so it
-                                    // stays clickable (the editor itself lives inside the header).
-                                    .overlay(alignment: .topTrailing) {
-                                        if hoveredID == item.id, model.renamingItemID == nil {
-                                            renamePencil(for: item, metrics: metrics)
+                                }
+                                .zIndex(hoveredID == item.id ? 20 : model.selectedID == item.id ? 10 : 0)
+                                // Tern's card entrance/exit: fade + Motion.scale + a 4pt rise, on the
+                                // out curve (driven by the LazyHStack's animation(value:) below).
+                                .transition(.asymmetric(
+                                    insertion: .opacity.combined(with: .scale(scale: Theme.Motion.scale)).combined(with: .offset(y: 4)),
+                                    removal: .opacity.combined(with: .scale(scale: Theme.Motion.scale))
+                                ))
+                                .onContinuousHover(coordinateSpace: .global) { phase in
+                                    switch phase {
+                                    case .active(let location):
+                                        if hoveredID != item.id {
+                                            withAnimation(Theme.Motion.out()) {
+                                                hoveredID = item.id
+                                            }
                                         }
-                                    }
-                                    .zIndex(hoveredID == item.id ? 20 : model.selectedID == item.id ? 10 : 0)
-                                    // Tern's card entrance/exit: fade + Motion.scale + a 4pt rise, on the
-                                    // out curve (driven by the LazyHStack's animation(value:) below).
-                                    .transition(.asymmetric(
-                                        insertion: .opacity.combined(with: .scale(scale: Theme.Motion.scale)).combined(with: .offset(y: 4)),
-                                        removal: .opacity.combined(with: .scale(scale: Theme.Motion.scale))
-                                    ))
-                                    .onContinuousHover(coordinateSpace: .global) { phase in
-                                        switch phase {
-                                        case .active(let location):
-                                            if hoveredID != item.id {
-                                                withAnimation(Theme.Motion.out()) {
-                                                    hoveredID = item.id
-                                                }
-                                            }
-                                            // Only let hover steal the keyboard selection on a REAL
-                                            // pointer move — NOT when a card scrolls/lays out under a
-                                            // stationary pointer (that fires hover at the same global
-                                            // location), which would snap the selection backwards.
-                                            let moved = lastHoverLocation.map {
-                                                hypot(location.x - $0.x, location.y - $0.y) > 0.5
-                                            } ?? true
-                                            if moved, model.selectedID != item.id {
-                                                suppressHoverScroll = true
-                                                model.selectedID = item.id
-                                            }
-                                            lastHoverLocation = location
-                                        case .ended:
-                                            if hoveredID == item.id {
-                                                withAnimation(Theme.Motion.out()) {
-                                                    hoveredID = nil
-                                                }
+                                        // Only let hover steal the keyboard selection on a REAL
+                                        // pointer move — NOT when a card scrolls/lays out under a
+                                        // stationary pointer (that fires hover at the same global
+                                        // location), which would snap the selection backwards.
+                                        let moved = lastHoverLocation.map {
+                                            hypot(location.x - $0.x, location.y - $0.y) > 0.5
+                                        } ?? true
+                                        if moved, model.selectedID != item.id {
+                                            suppressHoverScroll = true
+                                            model.selectedID = item.id
+                                        }
+                                        lastHoverLocation = location
+                                    case .ended:
+                                        if hoveredID == item.id {
+                                            withAnimation(Theme.Motion.out()) {
+                                                hoveredID = nil
                                             }
                                         }
                                     }
-                                    .contextMenu {
-                                        clipMenu(for: item)
-                                    }
                                 }
-                            }
-                            .padding(.horizontal, metrics.sidePadding)
-                            .padding(.top, metrics.topPadding)
-                            .padding(.bottom, metrics.bottomPadding)
-                            // Animate the row whenever its membership changes (a new clip, a delete, a
-                            // filter): neighbors slide to close the gap and the card transitions play.
-                            .animation(Theme.Motion.out(Theme.Motion.Duration.reflow), value: filteredItems.map(\.id))
-                        }
-                        .scrollClipDisabled()
-                        .scrollIndicators(.hidden)
-                        .onChange(of: model.selectedID) {
-                            // A show re-selects the first card: jump there, don't scroll across the
-                            // row from where the last presentation left off.
-                            if model.consumeJumpToSelection() {
-                                suppressHoverScroll = false
-                                if let selectedID = model.selectedID { proxy.scrollTo(selectedID, anchor: .center) }
-                                return
-                            }
-                            // Hover-driven selection changes skip auto-scroll (the hovered card
-                            // is already on screen); only keyboard navigation centers the card.
-                            if suppressHoverScroll {
-                                suppressHoverScroll = false
-                                return
-                            }
-                            if let selectedID = model.selectedID {
-                                withAnimation(Theme.Motion.out(Theme.Motion.Duration.slow)) {
-                                    proxy.scrollTo(selectedID, anchor: .center)
+                                .contextMenu {
+                                    clipMenu(for: item)
                                 }
                             }
                         }
-                        .onChange(of: model.showToken) {
-                            // The row stays mounted between shows; even when the selection didn't
-                            // change, the user may have scrolled it away last time.
+                        .padding(PanelLayout.inset)
+                        // Animate the row whenever its membership changes (a new clip, a delete, a
+                        // filter): neighbors slide to close the gap and the card transitions play.
+                        .animation(Theme.Motion.out(Theme.Motion.Duration.reflow), value: filteredItems.map(\.id))
+                    }
+                    .scrollClipDisabled()
+                    .scrollIndicators(.hidden)
+                    .onChange(of: model.selectedID) {
+                        // A show re-selects the first card: jump there, don't scroll across the
+                        // row from where the last presentation left off.
+                        if model.consumeJumpToSelection() {
+                            suppressHoverScroll = false
                             if let selectedID = model.selectedID { proxy.scrollTo(selectedID, anchor: .center) }
+                            return
                         }
+                        // Hover-driven selection changes skip auto-scroll (the hovered card
+                        // is already on screen); only keyboard navigation centers the card.
+                        if suppressHoverScroll {
+                            suppressHoverScroll = false
+                            return
+                        }
+                        if let selectedID = model.selectedID {
+                            withAnimation(Theme.Motion.out(Theme.Motion.Duration.slow)) {
+                                proxy.scrollTo(selectedID, anchor: .center)
+                            }
+                        }
+                    }
+                    .onChange(of: model.showToken) {
+                        // The row stays mounted between shows; even when the selection didn't
+                        // change, the user may have scrolled it away last time.
+                        if let selectedID = model.selectedID { proxy.scrollTo(selectedID, anchor: .center) }
                     }
                 }
             }
@@ -412,33 +407,33 @@ struct PanelView: View {
         }
     }
 
-    /// Hover affordance: a square.and.pencil button in the header (left of the source icon),
-    /// vertically centered in the gradient bar.
+    /// Hover affordance: a square.and.pencil button at the end of the card's meta row, over the time,
+    /// centered on the row.
     private func renamePencil(for item: Clip, metrics: CardMetrics) -> some View {
-        Button {
+        let size: CGFloat = 22
+        return Button {
             startRename(item)
         } label: {
             Image(systemName: "square.and.pencil")
-                .font(.system(size: max(12, metrics.titleSize - 2), weight: .semibold))
+                .font(.system(size: metrics.detailSize, weight: .semibold))
                 .foregroundStyle(Theme.Text.t2)
-                .frame(width: 24, height: 24)
+                .frame(width: size, height: size)
                 .background(Theme.Surface.raise, in: Circle())
                 .overlay { Circle().strokeBorder(Theme.Line.l2, lineWidth: 1) }
                 .contentShape(Circle())
         }
         .buttonStyle(.pressable)
         .help(String(localized: "Rename"))
-        .padding(.trailing, metrics.iconSize + 14)
-        .padding(.top, max(4, (metrics.headerHeight - 24) / 2))
+        .padding(.trailing, metrics.contentInset - 4)
+        .padding(.top, metrics.metaSpace + (metrics.iconSize - size) / 2)
     }
 
     /// A 1:1 snapshot of the on-screen card, used as the drag preview so the floating image
     /// matches exactly (gradient header, source icon, body, footer, rounded corners).
     @MainActor
-    private func dragImage(for item: Clip, index: Int, metrics: CardMetrics) -> NSImage? {
+    private func dragImage(for item: Clip, metrics: CardMetrics) -> NSImage? {
         let card = ClipCard(
             item: item,
-            index: index,
             pinboard: pinboard(for: item),
             isSelected: false,
             isHovered: false,
@@ -447,6 +442,8 @@ struct PanelView: View {
             renameFocus: $focus
         )
         .frame(width: metrics.width, height: metrics.height)
+        // The card is a pane of the glass; floating over other apps it needs the glass under it.
+        .background(Theme.Glass.tint, in: RoundedRectangle(cornerRadius: metrics.cornerRadius, style: .continuous))
         .environment(\.clipFiles, store.files)
         let renderer = ImageRenderer(content: card)
         renderer.scale = NSScreen.main?.backingScaleFactor ?? 2

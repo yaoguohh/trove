@@ -13,8 +13,13 @@ enum Theme {
         static let coal = Color(hex: 0x121419)
         /// Cards and controls. Opaque so a card fully occludes the blurred desktop behind the glass.
         static let card = Color(hex: 0x1A1E25)
-        /// Hovered / selected card.
+        /// A hovered control, the rename button's disc.
         static let raise = Color(hex: 0x252932)
+        /// A clip card on the panel's glass, as Tern's dark cards: the text color at 6%, so the glass
+        /// shows through and the card reads as a lighter pane of it rather than a dark hole.
+        static let glassCard = Text.t1.opacity(0.06)
+        /// A hovered or selected clip card: one step up.
+        static let glassCardRaised = Text.t1.opacity(0.09)
         /// The plate behind a link's favicon. Favicons are drawn for light browser chrome, so a dark
         /// one would vanish on `card`; this is the only light surface in the app.
         static let faviconPlate = Color.white.opacity(0.92)
@@ -58,8 +63,9 @@ enum Theme {
     enum Tint {
         static let fill = 0.16
         static let hairline = 0.22
-        /// The card header's wash of the source app's colors, fading out across the header.
-        static let headerWash: (top: Double, middle: Double, tail: Double) = (0.18, 0.08, 0)
+        /// The source app's color glowing from a card's top-left corner (Tern's accent glow on its glass),
+        /// at the corner; it fades out across the card.
+        static let sourceGlow = 0.22
     }
 
     /// The one accent. Used at fixed alpha steps for fills and rings; never a second brand hue.
@@ -108,8 +114,7 @@ enum Theme {
 
     /// Shadows by elevation. Everything that casts one uses one of these.
     enum Shadow {
-        static let rest = ShadowStyle(opacity: 0.14, radius: 8, y: 4)        // a card at rest
-        static let lifted = ShadowStyle(opacity: 0.26, radius: 18, y: 8)     // hovered / selected / dragged
+        static let lifted = ShadowStyle(opacity: 0.26, radius: 18, y: 8)     // a dragged pinboard chip
         static let floating = ShadowStyle(opacity: 0.55, radius: 16, y: 6)   // the peek bubble
 
         /// A small app-style badge (source icon, favicon), proportional to its size.

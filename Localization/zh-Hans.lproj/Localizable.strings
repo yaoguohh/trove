@@ -28,7 +28,6 @@
 "Nothing here yet" = "还没有内容";
 "Copy something and it will appear in this tray." = "复制点什么，它就会出现在这里。";
 "Clipboard history" = "剪贴板历史记录";
-"%lld characters" = "%lld 个字符";
 "Type" = "类型";
 "All" = "全部";
 "Clear History" = "清空历史";
@@ -49,7 +48,6 @@
 
 /* Large content */
 "Preview shortened for performance; copy or paste delivers the full content." = "预览已为性能缩短；复制或粘贴仍为完整内容。";
-"Truncated" = "已截断";
 "This clip was too large and was shortened; pasting will not include the full content." = "此内容过大已被截断，粘贴时将不包含完整内容。";
 
 /* Rich preview */

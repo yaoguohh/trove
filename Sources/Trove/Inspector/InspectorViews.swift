@@ -92,7 +92,7 @@ struct BoundedPlainText: View {
         VStack(alignment: .leading, spacing: 0) {
             if isTruncated {
                 // The content itself was lost at the ceiling — paste won't be complete. Be honest
-                // (matches the card's "Truncated" chip) rather than promising full fidelity.
+                // (matches the card's truncation mark) rather than promising full fidelity.
                 notice(String(localized: "This clip was too large and was shortened; pasting will not include the full content."))
             } else if bounded.isClipped {
                 notice(String(localized: "Preview shortened for performance; copy or paste delivers the full content."))

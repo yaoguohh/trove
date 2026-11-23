@@ -51,7 +51,7 @@ enum SourceAppIconProvider {
         accentPalette(for: item, fallback: fallback).first ?? fallback
     }
 
-    static func accentPalette(for item: Clip, fallback: Color) -> [Color] {
+    private static func accentPalette(for item: Clip, fallback: Color) -> [Color] {
         let key = cacheKey(for: item)
         if let cached = paletteCache[key] {
             return cached
