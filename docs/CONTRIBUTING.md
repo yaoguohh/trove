@@ -25,9 +25,13 @@ ad-hoc 签名，designated requirement 固定为 bundle id，所以重复打包�
 swift test                                  # 全部
 swift test --skip PanelControllerTests      # 跳过会在屏幕上弹出面板的那组
 bash scripts/check-localization.sh          # 文案键检查（CI 也会跑）
+bash scripts/audit-layout.sh                # 布局测量，改了界面就跑（见 DESIGN.md"对齐"）
 ```
 
 - `PanelControllerTests` 会真实显示面板窗口，跑的时候屏幕上会闪一下。
+- `LayoutAuditTests` 平时跳过，只在 `scripts/audit-layout.sh` 设了 `TROVE_LAYOUT_AUDIT` 时运行；它要
+  在屏幕上显示窗口，所以屏幕要解锁。玻璃对比度那项用 `screencapture` 拍真实屏幕，运行它的终端需要
+  "录屏与系统录音"权限。报告和渲染图默认写到 `.build/layout-audit/`。
 - 存储相关测试用 `Tests/TroveTests/TestSupport.swift` 里的 `makeTempStore()`、`makeTempDirectory()`。
   每个 store 有自己的临时根目录，测试不会读写 `~/Library/Application Support/Trove/`。
 - 有判断逻辑的地方先抽成纯函数再测（参考 `PanelKeyboard.intent`、`PasteboardIngest.decide`），
