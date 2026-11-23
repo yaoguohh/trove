@@ -40,7 +40,7 @@ Sparkle（自动更新）和 PermissionFlow（辅助功能授权引导）。
 | `Inspector/` | 独立的检查窗口及其内容判定 | `InspectorController`、`InspectorRenderer`、`InspectorViews`、`EditingShortcuts` |
 | `Links/` | 链接卡片的标题与图标 | `LinkMetadataProvider`、`LinkAddressGuard`、`HTMLHead`、`LinkCardText` |
 | `SourceApp/` | 来源应用的图标与配色 | `SourceAppIconProvider`、`SourceAppStyle` |
-| `Design/` | 视觉令牌与共用的视觉组件 | `Theme`、`ThemeModifiers`、`PinboardColor`、`ImageUnavailableView` |
+| `Design/` | 视觉令牌与共用的视觉组件 | `Theme`、`ThemeModifiers`、`PinboardColor`、`ImageUnavailableView`、`AppIconImage` |
 | `Welcome/` | 欢迎窗口与权限引导 | `WelcomeController`、`WelcomeView`、`PermissionStatus`、`PermissionGuide` |
 | `App/` | 组合根、状态菜单、自动更新 | `AppDelegate`、`StatusMenuController`、`StatusMenuView`、`UpdaterController` |
 
