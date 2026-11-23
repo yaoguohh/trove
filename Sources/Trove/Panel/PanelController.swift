@@ -53,12 +53,14 @@ final class PanelController {
             createPanel()
         }
         guard let panel else { return }
-        position(panel)
+        position(panel, on: targetScreen())
         panel.contentView?.layoutSubtreeIfNeeded()
         model.didHide()
     }
 
-    func show() {
+    /// - Parameter screen: the display to show on; the one under the mouse when nil. The layout audit
+    ///   passes a 2x display, where nothing is rounded to whole points.
+    func show(on screen: NSScreen? = nil) {
         if panel == nil {
             createPanel()
         }
@@ -67,7 +69,7 @@ final class PanelController {
         isHiding = false   // a re-summon cancels any in-flight collapse
         // Start transparent; the fade-in below replaces any pending hide fade for the same property.
         panel.alphaValue = 0
-        position(panel)
+        position(panel, on: screen ?? targetScreen())
         // The panel is a `.nonactivatingPanel`, so it becomes the KEY window and receives keyboard
         // WITHOUT activating Trove or stealing the frontmost app's active status — the idiomatic
         // launcher pattern (the same one our peek bubble uses). We deliberately do NOT call
@@ -279,11 +281,11 @@ final class PanelController {
         return NSScreen.preferring(NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) })
     }
 
-    private func position(_ panel: NSPanel) {
+    private func position(_ panel: NSPanel, on screen: NSScreen?) {
         // No display (headless / all displays asleep / screen-sharing teardown) → leave the panel
         // as is rather than crash; it isn't visible in that state anyway. (NSScreen.screens can be
         // empty, so don't force-index it.)
-        guard let vis = targetScreen()?.visibleFrame else { return }
+        guard let vis = screen?.visibleFrame else { return }
         let bottomMargin = max(12, min(28, vis.height * 0.020))
 
         // Every display fills the width edge-to-edge; a hair of side margin keeps the rounded

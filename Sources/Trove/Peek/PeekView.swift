@@ -32,16 +32,16 @@ struct PeekView: View {
         return ZStack {
             BubbleTailShape(tailHeight: tail).fill(Theme.Surface.card)
             BubbleTailShape(tailHeight: tail).stroke(Theme.Line.l2, lineWidth: 1)
-            content(for: item)
-                .padding(PeekController.contentInset)
-                .padding(.bottom, tail) // keep content clear of the tail notch
+            HStack(alignment: .top, spacing: PeekController.hintGap) {
+                content(for: item)
+                expandHint(item)
+            }
+            .padding(PeekController.contentInset)
+            .padding(.bottom, tail) // keep content clear of the tail notch
         }
         .compositingGroup()
         .shadow(Theme.Shadow.floating)
         .popIn(trigger: pop.generation, nudge: 3)
-        // A tiny, non-interactive hint that the peek is expandable (↗ opens a URL in the browser, ⤢
-        // opens the inspector) — small and tertiary so it never dominates the bubble.
-        .overlay(alignment: .topTrailing) { expandHint(item) }
         // The WHOLE bubble is the expand affordance: a clear overlay button (the proven click path in
         // this non-activating panel) so a tap anywhere opens the inspector, with no bulky control.
         .overlay {
@@ -53,7 +53,8 @@ struct PeekView: View {
 
     /// A small ↗/⤢ glyph hinting the peek is clickable-to-expand. ↗ for a single URL (opens the
     /// browser), the in-place expand glyph otherwise (opens the inspector) — mirroring what the
-    /// tap will actually do via `PanelController.showInspector`.
+    /// tap will actually do via `PanelController.showInspector`. Tiny and tertiary so it never
+    /// dominates the bubble; it ends on the content's right edge and centers on the first text line.
     private func expandHint(_ item: Clip) -> some View {
         let opensInBrowser: Bool
         if case .openURL = InspectorRenderer.expandAction(for: item.text, kind: item.kind) {
@@ -64,7 +65,7 @@ struct PeekView: View {
         return Image(systemName: opensInBrowser ? "arrow.up.right" : "arrow.up.left.and.arrow.down.right")
             .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(Theme.Text.t3)
-            .padding(9)
+            .frame(width: PeekController.hintWidth, height: PeekController.lineHeight, alignment: .trailing)
             .allowsHitTesting(false)
     }
 
@@ -80,7 +81,7 @@ struct PeekView: View {
             ImageUnavailableView(symbolSize: 30, textSize: 12)
         } else {
             Text(item.text.prefix(PeekController.bubbleTextCap))
-                .font(.system(size: 13))
+                .font(Font(PeekController.textFont))
                 .foregroundStyle(Theme.Text.t1)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .clipped()

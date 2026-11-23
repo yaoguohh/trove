@@ -22,60 +22,75 @@ struct StatusMenuView: View {
     var onAllowClipboardAccess: () -> Void
     var onQuit: () -> Void
 
-    private let width: CGFloat = 300
+    /// One grid for every row (docs/DESIGN.md "对齐"): content keeps `inset` from both menu edges, row
+    /// backgrounds (hover, tinted buttons) keep `rowInset`; icons center on one column and text starts
+    /// on one line after it, from the header down to the last row.
+    enum Layout {
+        static let width: CGFloat = 300
+        /// Menu edge to content, on both sides; the header and footer use it too.
+        static let inset: CGFloat = 16
+        /// Menu edge to a row's background, and the body's top and bottom padding.
+        static let rowInset: CGFloat = 8
+        /// A row's background to its content.
+        static let rowPadding: CGFloat = inset - rowInset
+        /// Icons center in this column; text starts `iconGap` after it.
+        static let iconColumn: CGFloat = 20
+        static let iconGap: CGFloat = 8
+        static let rowHeight: CGFloat = 28
+        static let buttonHeight: CGFloat = 32
+        /// Between the tinted buttons and the rows, and around a separator.
+        static let groupGap: CGFloat = 8
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             header
             hairline
 
-            VStack(spacing: 2) {
-                if !accessibilityTrusted {
-                    warningRow(
-                        icon: "lock.shield.fill",
-                        title: String(localized: "Turn On Auto-Paste..."),
-                        detail: String(localized: "Needs \(PermissionGuide.accessibilityName) permission"),
-                        action: onGrantAccessibility
-                    )
-                    Rectangle().fill(.clear).frame(height: 4)
+            VStack(spacing: 0) {
+                VStack(spacing: 4) {
+                    if !accessibilityTrusted {
+                        warningRow(
+                            icon: "lock.shield.fill",
+                            title: String(localized: "Turn On Auto-Paste..."),
+                            detail: String(localized: "Needs \(PermissionGuide.accessibilityName) permission"),
+                            action: onGrantAccessibility
+                        )
+                    }
+                    if clipboardAccessNeedsAction {
+                        warningRow(
+                            icon: "doc.on.clipboard.fill",
+                            title: String(localized: "Allow Clipboard Access..."),
+                            detail: String(localized: "Allow Trove in Paste from Other Apps"),
+                            action: onAllowClipboardAccess
+                        )
+                    }
+                    showButton
                 }
-                if clipboardAccessNeedsAction {
-                    warningRow(
-                        icon: "doc.on.clipboard.fill",
-                        title: String(localized: "Allow Clipboard Access..."),
-                        detail: String(localized: "Allow Trove in Paste from Other Apps"),
-                        action: onAllowClipboardAccess
-                    )
-                    Rectangle().fill(.clear).frame(height: 4)
-                }
-
-                showButton
-
-                Rectangle().fill(.clear).frame(height: 6)
+                .padding(.bottom, Layout.groupGap)
 
                 toggleRow(icon: "link", title: String(localized: "Link Previews"), isOn: $settings.linkPreviews)
                 toggleRow(icon: "menubar.rectangle", title: String(localized: "Run in Background"), isOn: $settings.runInBackground)
 
-                hairline.padding(.vertical, 5).padding(.horizontal, 4)
+                separator
 
                 shortcutRow
 
-                hairline.padding(.vertical, 5).padding(.horizontal, 4)
+                separator
 
                 actionRow(icon: "trash", title: String(localized: "Clear History..."), action: onClearHistory)
                 actionRow(icon: "arrow.down.circle", title: String(localized: "Check for Updates..."), action: onCheckUpdates)
                     .disabled(!canCheckForUpdates)
                     .opacity(canCheckForUpdates ? 1 : 0.45)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 7)
+            .padding(Layout.rowInset)
 
             footer
         }
-        .frame(width: width)
+        .frame(width: Layout.width)
         // Tern's `popIn` for the content; the window only fades (`NSWindow.fadeIn`).
         .popIn()
-        // The same dense .hudWindow glass as the clipboard panel, so the menu reads as a solid surface.
+        // The clipboard panel's material under the menu-strength tint, as Tern's menus.
         .background(GlassBackground())
         // Round the whole thing (glass + content): the borderless panel has no chrome of its own, and
         // its window shadow follows this rounded opaque shape.
@@ -90,14 +105,22 @@ struct StatusMenuView: View {
         .onExitCommand { onClose() }
     }
 
+    /// Full width: it sets the header and footer apart from the body.
     private var hairline: some View {
         Rectangle().fill(Theme.Line.l2).frame(height: 1)
+    }
+
+    /// Between groups of rows: as wide as the content.
+    private var separator: some View {
+        hairline
+            .padding(.horizontal, Layout.rowPadding)
+            .padding(.vertical, Layout.groupGap / 2)
     }
 
     // MARK: Inline settings (Shortcut)
 
     private var shortcutRow: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Layout.iconGap) {
             rowIcon("command")
             VStack(alignment: .leading, spacing: 1) {
                 Text("Shortcut").font(.system(size: 12)).foregroundStyle(Theme.Text.t1)
@@ -106,17 +129,18 @@ struct StatusMenuView: View {
                     Text("In use by another app").font(.system(size: 10)).foregroundStyle(Theme.Semantic.warn)
                 }
             }
-            Spacer(minLength: 8)
+            Spacer(minLength: Layout.iconGap)
             ShortcutRecorder(settings: settings)
         }
-        .padding(.horizontal, 8)
-        .frame(minHeight: 30)
+        .padding(.horizontal, Layout.rowPadding)
+        .frame(minHeight: Layout.rowHeight)
     }
 
     // MARK: Header
 
     private var header: some View {
-        HStack(spacing: 9) {
+        HStack(spacing: Layout.iconGap) {
+            // Wider than the icon column; centered on it like every row icon below.
             RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
                 .fill(Theme.accent)
                 .frame(width: 24, height: 24)
@@ -125,6 +149,7 @@ struct StatusMenuView: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Theme.Surface.coal)
                 )
+                .frame(width: Layout.iconColumn)
             VStack(alignment: .leading, spacing: 1) {
                 Text(verbatim: "Trove").font(.system(size: 13.5, weight: .bold)).foregroundStyle(Theme.Text.t1)
                 Text(clipCount == 1
@@ -138,23 +163,24 @@ struct StatusMenuView: View {
                 .font(.system(size: 9.5, design: .monospaced))
                 .foregroundStyle(Theme.Text.t3)
         }
-        .padding(.horizontal, 13)
-        .padding(.top, 11)
-        .padding(.bottom, 9)
+        .padding(.horizontal, Layout.inset)
+        .padding(.vertical, 12)
     }
 
     // MARK: Primary action
 
     private var showButton: some View {
         Button(action: onShow) {
-            HStack(spacing: 6) {
-                Image(systemName: "rectangle.stack.fill").font(.system(size: 11.5, weight: .semibold))
+            HStack(spacing: Layout.iconGap) {
+                Image(systemName: "rectangle.stack.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(width: Layout.iconColumn)
                 Text("Show Trove").font(.system(size: 12, weight: .semibold))
                 Spacer()
             }
             .foregroundStyle(Theme.accent)
-            .padding(.horizontal, 11)
-            .frame(height: 30)
+            .padding(.horizontal, Layout.rowPadding)
+            .frame(height: Layout.buttonHeight)
             .frame(maxWidth: .infinity)
             .background(Theme.Accent.fill, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous).strokeBorder(Theme.Accent.hairline, lineWidth: 1))
@@ -165,8 +191,10 @@ struct StatusMenuView: View {
     /// A missing permission: what it unlocks, and on a second line what to do in System Settings.
     private func warningRow(icon: String, title: String, detail: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: icon).font(.system(size: 12, weight: .semibold))
+            HStack(spacing: Layout.iconGap) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(width: Layout.iconColumn)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title).font(.system(size: 11.5, weight: .medium))
                     Text(detail).font(.system(size: 10)).foregroundStyle(Theme.Text.t2)
@@ -175,7 +203,7 @@ struct StatusMenuView: View {
                 Spacer()
             }
             .foregroundStyle(Theme.Semantic.warn)
-            .padding(.horizontal, 10)
+            .padding(.horizontal, Layout.rowPadding)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity)
             .background(Theme.Semantic.warn.opacity(Theme.Tint.fill), in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
@@ -188,7 +216,7 @@ struct StatusMenuView: View {
 
     private func actionRow(icon: String, title: String, action: @escaping () -> Void) -> some View {
         HoverRow {
-            HStack(spacing: 10) {
+            HStack(spacing: Layout.iconGap) {
                 rowLabel(icon: icon, title: title)
                 Spacer()
             }
@@ -197,7 +225,7 @@ struct StatusMenuView: View {
 
     private func toggleRow(icon: String, title: String, isOn: Binding<Bool>) -> some View {
         HoverRow {
-            HStack(spacing: 10) {
+            HStack(spacing: Layout.iconGap) {
                 rowLabel(icon: icon, title: title)
                 Spacer()
                 MiniSwitch(isOn: isOn.wrappedValue)
@@ -208,7 +236,7 @@ struct StatusMenuView: View {
     }
 
     private func rowIcon(_ name: String) -> some View {
-        Image(systemName: name).font(.system(size: 12)).frame(width: 17).foregroundStyle(Theme.Text.t3)
+        Image(systemName: name).font(.system(size: 12)).frame(width: Layout.iconColumn).foregroundStyle(Theme.Text.t3)
     }
 
     @ViewBuilder
@@ -224,7 +252,7 @@ struct StatusMenuView: View {
             Text("Local · MIT").font(.system(size: 10)).foregroundStyle(Theme.Text.t3)
             Spacer()
             Button(action: onQuit) {
-                HStack(spacing: 5) {
+                HStack(spacing: 4) {
                     Image(systemName: "power").font(.system(size: 11, weight: .medium))
                     Text("Quit").font(.system(size: 11))
                 }
@@ -232,8 +260,8 @@ struct StatusMenuView: View {
             }
             .buttonStyle(.pressable)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.horizontal, Layout.inset)
+        .padding(.vertical, 8)
         .overlay(hairline, alignment: .top)
     }
 }
@@ -247,8 +275,8 @@ private struct HoverRow<Content: View>: View {
     var body: some View {
         Button(action: action) {
             content
-                .padding(.horizontal, 8)
-                .frame(height: 28)
+                .padding(.horizontal, StatusMenuView.Layout.rowPadding)
+                .frame(height: StatusMenuView.Layout.rowHeight)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)

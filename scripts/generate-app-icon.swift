@@ -2,6 +2,7 @@
 
 import AppKit
 import Foundation
+import SwiftUI
 
 let outputURL = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "Trove.icns")
 let fileManager = FileManager.default
@@ -63,8 +64,11 @@ func renderIcon(size: CGFloat) -> NSImage {
     rect.fill()
 
     let scale = size / 1024
-    let baseRect = rect.insetBy(dx: 74 * scale, dy: 74 * scale)
-    let basePath = NSBezierPath(roundedRect: baseRect, xRadius: 220 * scale, yRadius: 220 * scale)
+    // Apple's macOS icon grid: an 824 rounded square centered on the 1024 canvas, with continuous
+    // corners, so Trove sits the same size as the icons next to it on macOS 14 and 15 (later systems
+    // re-mask icons to this shape themselves).
+    let baseRect = rect.insetBy(dx: 100 * scale, dy: 100 * scale)
+    let basePath = NSBezierPath(cgPath: RoundedRectangle(cornerRadius: 185.4 * scale, style: .continuous).path(in: baseRect).cgPath)
     let baseShadow = NSShadow()
     baseShadow.shadowColor = NSColor.black.withAlphaComponent(0.16)
     baseShadow.shadowBlurRadius = 30 * scale
@@ -78,9 +82,24 @@ func renderIcon(size: CGFloat) -> NSImage {
     baseGradient?.draw(in: basePath, angle: -35)
     NSGraphicsContext.restoreGraphicsState()
 
+    // The edge line stays inside the square: clipped, so only its inner half shows.
+    NSGraphicsContext.saveGraphicsState()
+    basePath.addClip()
     NSColor.black.withAlphaComponent(0.08).setStroke()
     basePath.lineWidth = 10 * scale
     basePath.stroke()
+    NSGraphicsContext.restoreGraphicsState()
+
+    // The artwork was drawn for an 876 square; scale it to the 824 one, about the canvas center, and
+    // shift it so its outline is centered on the square.
+    let artScale: CGFloat = 824.0 / 876
+    let artShift = NSPoint(x: -3.2, y: 7.2)
+    let art = NSAffineTransform()
+    art.translateX(by: 512 * scale, yBy: 512 * scale)
+    art.scale(by: artScale)
+    art.translateX(by: (artShift.x - 512) * scale, yBy: (artShift.y - 512) * scale)
+    NSGraphicsContext.saveGraphicsState()
+    art.concat()
 
     drawCard(
         in: NSRect(x: 218 * scale, y: 246 * scale, width: 510 * scale, height: 520 * scale),
@@ -109,16 +128,7 @@ func renderIcon(size: CGFloat) -> NSImage {
     NSColor(calibratedRed: 0.12, green: 0.72, blue: 0.55, alpha: 1).setFill()
     dotPath.fill()
 
-    let shinePath = NSBezierPath()
-    shinePath.move(to: NSPoint(x: 168 * scale, y: 820 * scale))
-    shinePath.curve(
-        to: NSPoint(x: 420 * scale, y: 928 * scale),
-        controlPoint1: NSPoint(x: 230 * scale, y: 910 * scale),
-        controlPoint2: NSPoint(x: 344 * scale, y: 956 * scale)
-    )
-    NSColor.black.withAlphaComponent(0.06).setStroke()
-    shinePath.lineWidth = 24 * scale
-    shinePath.stroke()
+    NSGraphicsContext.restoreGraphicsState()
 
     return image
 }

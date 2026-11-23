@@ -154,7 +154,11 @@ struct PanelView: View {
                 .frame(width: PanelLayout.toolbarHeight, height: PanelLayout.toolbarHeight)
                 .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
+        // The button menu style with a plain button draws the label as laid out here. The borderless
+        // style draws its own control: it ignored the label's frame, font and color, and left the
+        // glyph 4pt right of its 28pt square.
+        .menuStyle(.button)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
     }
@@ -308,8 +312,12 @@ struct PanelView: View {
 
     private var emptyState: some View {
         VStack(spacing: 12) {
+            // Sized by its frame, which is then the symbol's visible outline: at a font size the frame
+            // adds the font's line space above the symbol, and the group sat 2.3pt low.
             Image(systemName: "doc.on.clipboard")
-                .font(.system(size: 44))
+                .resizable()
+                .scaledToFit()
+                .frame(height: 54)
                 .foregroundStyle(Theme.Text.t3)
             Text("Nothing here yet")
                 .font(.headline)

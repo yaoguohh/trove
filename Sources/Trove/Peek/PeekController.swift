@@ -28,6 +28,14 @@ final class PeekController {
     static let contentInset: CGFloat = 14
     /// Gap between the tail tip and the panel's top edge.
     static let gap: CGFloat = 6
+    /// The expand hint's column at the content's top-right. It is laid out beside the content rather
+    /// than over it, so a long first line or an image corner never runs under it.
+    static let hintWidth: CGFloat = 12
+    static let hintGap: CGFloat = 8
+    /// The bubble's text font; `bubbleSize` measures with the same one `PeekView` draws with.
+    static let textFont = NSFont.systemFont(ofSize: 13)
+    /// One line of `textFont`: the hint centers on the first line.
+    static var lineHeight: CGFloat { ceil(textFont.ascender - textFont.descender + textFont.leading) }
 
     init(files: ClipFiles) {
         self.files = files
@@ -143,32 +151,36 @@ final class PeekController {
     /// padding used in `PeekView` so the rendered content fills it exactly.
     static func bubbleSize(for item: Clip, files: ClipFiles, maxContentW: CGFloat, maxContentH: CGFloat) -> NSSize {
         let inset = contentInset
+        let hintColumn = hintGap + hintWidth
+        let maxW = maxContentW - hintColumn
         func wrap(_ w: CGFloat, _ h: CGFloat) -> NSSize {
-            NSSize(width: w + inset * 2, height: h + inset * 2 + tailHeight)
+            NSSize(width: w + hintColumn + inset * 2, height: h + inset * 2 + tailHeight)
         }
 
         if item.kind == .image {
             if let image = ImageCache.image(for: item, in: files), image.size.width > 0, image.size.height > 0 {
                 let fitted = ImageFit.size(
                     of: image.size,
-                    within: CGSize(width: maxContentW, height: maxContentH),
+                    within: CGSize(width: maxW, height: maxContentH),
                     atLeast: CGSize(width: 200, height: 130)
                 )
                 return wrap(fitted.width, fitted.height)
             }
             // Image kind but the backing file is gone → size for the "Image unavailable" placeholder
             // (rendered in PeekView), not for the empty text, so it isn't clipped.
-            return wrap(min(180, maxContentW), min(72, maxContentH))
+            return wrap(min(180, maxW), min(72, maxContentH))
         }
 
-        let cw = min(maxContentW, 432)
+        let cw = min(maxW, 432)
         let raw = item.text.isEmpty ? item.kind.title : String(item.text.prefix(bubbleTextCap))
         let measured = (raw as NSString).boundingRect(
             with: NSSize(width: cw, height: 6000),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: [.font: NSFont.systemFont(ofSize: 13)]
+            attributes: [.font: textFont]
         ).height
-        let ch = max(30, min(ceil(measured), maxContentH))
+        // As tall as the text: a minimum taller than one line left the single-line bubble with an
+        // empty band under the text.
+        let ch = max(lineHeight, min(ceil(measured), maxContentH))
         return wrap(cw, ch)
     }
 }

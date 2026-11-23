@@ -12,8 +12,25 @@ struct WelcomeView: View {
     var onOpenClipboardSettings: () -> Void
     var onDone: () -> Void
 
+    /// The window's grid (docs/DESIGN.md "对齐"). Feature tiles and the permission card share the left
+    /// edge, and feature text and permission text start on one line: the permission icon column is the
+    /// tile's width less the card's padding.
+    enum Layout {
+        static let width: CGFloat = 440
+        /// Window edge to content on the sides and at the bottom.
+        static let inset: CGFloat = 28
+        /// Title bar to the icon: the view starts under the transparent title bar.
+        static let top: CGFloat = 40
+        static let sectionGap: CGFloat = 24
+        static let appIcon: CGFloat = 52
+        static let tile: CGFloat = 30
+        static let iconGap: CGFloat = 12
+        static let cardPadding: CGFloat = 12
+        static let permissionIcon: CGFloat = tile - cardPadding
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: Layout.sectionGap) {
             header
             if reason == .firstLaunch {
                 features
@@ -29,10 +46,10 @@ struct WelcomeView: View {
                 .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(.horizontal, 28)
-        .padding(.top, 36)
-        .padding(.bottom, 22)
-        .frame(width: 440)
+        .padding(.horizontal, Layout.inset)
+        .padding(.top, Layout.top)
+        .padding(.bottom, Layout.inset)
+        .frame(width: Layout.width)
         .background(Theme.Surface.coal)
     }
 
@@ -40,10 +57,8 @@ struct WelcomeView: View {
 
     private var header: some View {
         VStack(spacing: 6) {
-            Image(nsImage: NSApp.applicationIconImage)
-                .resizable()
-                .frame(width: 64, height: 64)
-                .padding(.bottom, 6)
+            AppIconImage(image: NSApp.applicationIconImage, size: Layout.appIcon)
+                .padding(.bottom, 10)
             Text(reason == .firstLaunch ? String(localized: "Welcome to Trove") : String(localized: "Turn On Auto-Paste"))
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(Theme.Text.t1)
@@ -61,7 +76,7 @@ struct WelcomeView: View {
     // MARK: How Trove is used
 
     private var features: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             feature(icon: "keyboard",
                     title: String(localized: "Press \(shortcut) in any app"),
                     detail: String(localized: "Your clipboard history opens over the app you're in."))
@@ -75,11 +90,11 @@ struct WelcomeView: View {
     }
 
     private func feature(icon: String, title: String, detail: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: Layout.iconGap) {
             Image(systemName: icon)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.accent)
-                .frame(width: 30, height: 30)
+                .frame(width: Layout.tile, height: Layout.tile)
                 .background(Theme.Accent.fill, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.Text.t1)
@@ -103,7 +118,9 @@ struct WelcomeView: View {
                 perform: onGrantAccessibility
             )
             if ClipboardAccessPermission.isAvailable {
-                Rectangle().fill(Theme.Line.l2).frame(height: 1).padding(.leading, 48)
+                // Starts where the text does.
+                Rectangle().fill(Theme.Line.l2).frame(height: 1)
+                    .padding(.leading, Layout.cardPadding + Layout.permissionIcon + Layout.iconGap)
                 permissionRow(
                     icon: "doc.on.clipboard.fill",
                     title: String(localized: "Paste from Other Apps"),
@@ -131,17 +148,17 @@ struct WelcomeView: View {
         prominent: Bool,
         perform: @escaping () -> Void
     ) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Layout.iconGap) {
             Image(systemName: icon)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(granted ? Theme.Text.t3 : Theme.Semantic.warn)
-                .frame(width: 24)
+                .frame(width: Layout.permissionIcon)
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: title).font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.Text.t1)
                 Text(detail).font(.system(size: 11.5)).foregroundStyle(Theme.Text.t2)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Spacer(minLength: 12)
+            Spacer(minLength: Layout.iconGap)
             if granted {
                 Label { Text("Allowed") } icon: { Image(systemName: "checkmark") }
                     .font(.system(size: 12, weight: .medium))
@@ -153,8 +170,7 @@ struct WelcomeView: View {
                 .buttonStyle(.pressable)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 12)
+        .padding(Layout.cardPadding)
         .animation(Theme.Motion.ease, value: granted)
     }
 }

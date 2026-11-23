@@ -69,10 +69,12 @@ struct ShortcutRecorder: View {
             Button {
                 isRecording ? stopRecording() : (settings.shortcut = .defaultShowPanel)
             } label: {
+                // The glyph sits on the frame's trailing edge, so its visible edge lines up with the
+                // other controls at the end of a row; the frame keeps the click target.
                 Image(systemName: isRecording ? "xmark.circle.fill" : "arrow.counterclockwise")
                     .font(.system(size: isRecording ? 12 : 11, weight: .medium))
                     .foregroundStyle(Theme.Text.t3)
-                    .frame(width: 18, height: 18)
+                    .frame(width: 18, height: 18, alignment: .trailing)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.pressable)

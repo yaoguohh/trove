@@ -10,9 +10,9 @@ struct HistorySearchField: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            // Baseline-align the magnifier with the field text so they sit level (centering
-            // alone left the icon optically high against the text baseline).
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            // Icons align on their center line (docs/DESIGN.md "对齐"): the magnifier's center sits on
+            // the text's cap-height middle. Baseline alignment put it 0.7pt low.
+            HStack(alignment: .center, spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Theme.Text.t3)
