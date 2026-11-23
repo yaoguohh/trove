@@ -10,8 +10,9 @@ enum PanelChrome {
     /// so this uses the DENSEST dark material, `.hudWindow`, not the thin `.underWindowBackground`
     /// (which let background text read through). Full opacity is intentional: translucency must come
     /// from the material's heavy BLUR, not from alpha — lowering alpha lets the raw, un-blurred desktop
-    /// bleed through and background window text becomes legible. The mask image clips the live blur
-    /// to the rounded rect cleanly (`cornerRadius` + `masksToBounds` leaves faint fringing).
+    /// bleed through and background window text becomes legible. The content draws `GlassTint` over
+    /// it, which keeps the glass dark over a light desktop. The mask image clips the live blur to the
+    /// rounded rect cleanly (`cornerRadius` + `masksToBounds` leaves faint fringing).
     @MainActor
     static func makeGlassContainer(content: NSView, cornerRadius: CGFloat) -> NSView {
         content.wantsLayer = true

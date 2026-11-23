@@ -42,11 +42,10 @@ struct PanelView: View {
         // view's layer, not here: a SwiftUI popIn re-renders this whole view on every frame.
         .frame(minWidth: PanelController.minimumSize.width, minHeight: PanelController.minimumSize.height)
         .background {
-            // Theme.Radius.panel, the same radius as the glass mask behind it.
-            // No fill tint: the chrome is the material alone plus an l2 hairline and a one-pixel
-            // glass-hi along the top (stopping short of the corner arcs).
-            RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
-                .fill(panelOverlay)
+            // Theme.Radius.panel, the same radius as the glass mask behind it: the glass tint, an l2
+            // hairline and a one-pixel glass-hi along the top (stopping short of the corner arcs).
+            GlassTint(opacity: Theme.Glass.windowOpacity)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
                         .strokeBorder(Theme.Line.l2, lineWidth: 1)
@@ -84,12 +83,6 @@ struct PanelView: View {
                 commitRenameByID(id)
             }
         }
-    }
-
-    private var panelOverlay: Color {
-        // No tint over the glass: the chrome's translucency is the material alone, for maximum
-        // Dock-like transparency.
-        Color.clear
     }
 
     private var pasteToolbar: some View {

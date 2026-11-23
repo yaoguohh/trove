@@ -13,6 +13,19 @@ extension ButtonStyle where Self == PressableButtonStyle {
     static var pressable: PressableButtonStyle { PressableButtonStyle() }
 }
 
+/// The tint over the glass (`Theme.Glass`), between the material and the content, at one of the glass
+/// strengths. Opaque under Reduce Transparency or Increase Contrast, as Tern's glass is; these two
+/// accessibility settings are the only environment the design reads.
+struct GlassTint: View {
+    let opacity: Double
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    var body: some View {
+        Theme.Glass.tint.opacity(reduceTransparency || contrast == .increased ? 1 : opacity)
+    }
+}
+
 /// Tern's `popIn`: `Motion.scale` + a 3pt nudge resolving on the `out` curve. Plays on
 /// appear and again whenever `trigger` changes (a re-summon). `fade` adds opacity for content that
 /// isn't already faded in by its window; `nudge` is the start offset (negative = from above).

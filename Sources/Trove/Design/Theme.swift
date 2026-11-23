@@ -20,6 +20,21 @@ enum Theme {
         static let faviconPlate = Color.white.opacity(0.92)
     }
 
+    /// The glass behind the panel and the status menu, as Tern's: the material blurs what is behind
+    /// the window, and the ground color covers it. The material alone turns light over a light desktop
+    /// (#A7A2AB over white), where the text ladder, made for a dark ground, washes out. Tern has two
+    /// strengths and so does Trove; `GlassTint` draws them, opaque when the system asks for less
+    /// transparency or more contrast.
+    enum Glass {
+        static let tint = Surface.coal
+        /// The panel, summoned over other apps like Tern's windows and quick terminal. Over this
+        /// material, 64% looks the same as Tern's window glass at its default settings (measured over
+        /// white, gray and black: #47484C, #2F3136, #13151B).
+        static let windowOpacity = 0.64
+        /// The status menu, as Tern's menus and popovers (`--pop-glass`).
+        static let menuOpacity = 0.88
+    }
+
     /// Three text tiers.
     enum Text {
         static let t1 = Color(hex: 0xD4D8E4)   // primary

@@ -91,6 +91,7 @@ struct StatusMenuView: View {
         // Tern's `popIn` for the content; the window only fades (`NSWindow.fadeIn`).
         .popIn()
         // The clipboard panel's material under the menu-strength tint, as Tern's menus.
+        .background(GlassTint(opacity: Theme.Glass.menuOpacity))
         .background(GlassBackground())
         // Round the whole thing (glass + content): the borderless panel has no chrome of its own, and
         // its window shadow follows this rounded opaque shape.
